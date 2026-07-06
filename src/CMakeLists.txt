@@ -1,6 +1,6 @@
 # --- Application executable -------------------------------------------------
 
-add_executable(kde-gdrive
+add_executable(nimbus-gdrive
     main.cpp
 
     # core (rclone engine layer)
@@ -22,6 +22,8 @@ add_executable(kde-gdrive
     # sync
     sync/BisyncManager.cpp
     sync/BisyncManager.h
+    sync/LocalWatcher.cpp
+    sync/LocalWatcher.h
 
     # config
     config/Settings.cpp
@@ -37,23 +39,24 @@ add_executable(kde-gdrive
 )
 
 # QML/Qt resources (icons + .qml files)
-qt_add_resources(kde-gdrive "kdegdrive"
+qt_add_resources(nimbus-gdrive "kdegdrive"
     PREFIX "/"
     FILES
         qml/MainWindow.qml
         qml/OAuthWizard.qml
         qml/SettingsPage.qml
         qml/RemoteDetailPage.qml
+        qml/AboutPage.qml
         logo.png
 )
 
-target_include_directories(kde-gdrive PRIVATE
+target_include_directories(nimbus-gdrive PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_BINARY_DIR}
     ${PROJECT_BINARY_DIR}
 )
 
-target_link_libraries(kde-gdrive PRIVATE
+target_link_libraries(nimbus-gdrive PRIVATE
     Qt6::Core
     Qt6::Gui
     Qt6::Network
@@ -73,11 +76,11 @@ target_link_libraries(kde-gdrive PRIVATE
 )
 
 # Make QML sources visible to the QML linter / IDE.
-set_target_properties(kde-gdrive PROPERTIES
+set_target_properties(nimbus-gdrive PROPERTIES
     CXX_STANDARD 20
     CXX_STANDARD_REQUIRED ON
     CXX_EXTENSIONS OFF
     AUTOMOC ON
 )
 
-install(TARGETS kde-gdrive ${KDE_INSTALL_TARGETS_DEFAULT_ARGS})
+install(TARGETS nimbus-gdrive ${KDE_INSTALL_TARGETS_DEFAULT_ARGS})

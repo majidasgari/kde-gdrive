@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(kde-gdrive
+project(nimbus-gdrive
     VERSION 0.1.0
-    DESCRIPTION "A stable, fast rclone-based Google Drive client for KDE"
+    DESCRIPTION "A stable, fast rclone-based Google Drive client"
     LANGUAGES CXX
 )
 
@@ -41,8 +41,8 @@ find_package(KF6 6.0.0 REQUIRED COMPONENTS
 )
 
 ecm_setup_version(${PROJECT_VERSION}
-    VARIABLE_PREFIX KDE_GDRIVE
-    VERSION_HEADER "${CMAKE_CURRENT_BINARY_DIR}/kde-gdrive-version.h"
+    VARIABLE_PREFIX NIMBUS_GDRIVE
+    VERSION_HEADER "${CMAKE_CURRENT_BINARY_DIR}/nimbus-gdrive-version.h"
 )
 
 # --- App data dir (icons / desktop) -----------------------------------------

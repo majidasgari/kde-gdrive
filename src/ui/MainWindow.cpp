@@ -7,6 +7,8 @@
 #include "config/Settings.h"
 
 #include <QDesktopServices>
+#include <QGuiApplication>
+#include <QClipboard>
 #include <QDebug>
 
 MainWindow::MainWindow(Settings *settings, RcloneDaemon *daemon, RcloneApiClient *apiClient,
@@ -99,4 +101,9 @@ void MainWindow::onVersionReceived(const QString &version)
 {
     m_rcloneVersion = version;
     Q_EMIT rcloneVersionChanged();
+}
+
+void MainWindow::copyToClipboard(const QString &text)
+{
+    QGuiApplication::clipboard()->setText(text);
 }

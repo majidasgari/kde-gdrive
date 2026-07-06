@@ -28,6 +28,7 @@ public Q_SLOTS:
     void listMounts();
     void getCoreStats();
     void dumpConfig();
+    void getDriveChanges(const QString &remote, const QString &pageToken);
 
 Q_SIGNALS:
     void versionReceived(const QString &version);
@@ -39,6 +40,7 @@ Q_SIGNALS:
     void mountsListed(const QJsonArray &mounts);
     void coreStatsReceived(const QJsonObject &stats);
     void configDumpReceived(const QJsonObject &config);
+    void driveChangesReceived(const QString &remote, const QJsonObject &response);
     void requestError(const QString &endpoint, const QString &error);
 
 private:

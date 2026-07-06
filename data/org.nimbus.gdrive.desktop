@@ -1,7 +1,7 @@
 [Desktop Entry]
-Name=KDE GDrive
-Comment=A stable, fast rclone-based Google Drive client for KDE
-Exec=kde-gdrive
+Name=Nimbus Google Drive Client
+Comment=A stable, fast rclone-based Google Drive client
+Exec=nimbus-gdrive
 Icon=drive-harddisk
 Type=Application
 Categories=Network;FileTransfer;

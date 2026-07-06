@@ -1,10 +1,10 @@
-# KDE-GDrive
+# Nimbus Google Drive Client
 
-A stable, fast **Google Drive client for KDE** built on top of
+A stable, fast **Google Drive client** built on top of
 [`rclone`](https://rclone.org) as its sync/mount engine.
 
 Unlike KDE's official `kio-gdrive` (which is a thin Drive-API browser over KIO,
-with no offline files and no real sync), KDE-GDrive runs a long-lived
+with no offline files and no real sync), Nimbus runs a long-lived
 `rclone rcd` (Remote Control) daemon under the hood and controls it through its
 HTTP JSON-RPC API. This gives you:
 

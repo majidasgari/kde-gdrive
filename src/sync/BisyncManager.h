@@ -9,6 +9,8 @@
 #include <QPair>
 
 class Settings;
+class LocalWatcher;
+class RcloneApiClient;
 
 struct SyncPair {
     QString remote;
@@ -85,11 +87,16 @@ private Q_SLOTS:
     void onProcessFinished(int exitCode, QProcess::ExitStatus status);
     void onProcessError(QProcess::ProcessError error);
     void checkSchedule();
+    void onLocalFolderChanged(const QString &rootPath, const QString &relativePath);
+    void onLocalDebounceTimeout();
+    void onRemotePollTimeout();
+    void onDriveChangesReceived(const QString &remote, const QJsonObject &response);
 
 private:
     void updateLastSync(const QString &status);
     QTime nextScheduledTime() const;
     void runNextQueued();
+    bool isSyncQueuedOrRunning(const QString &remoteFs) const;
 
     QProcess *m_process;
     QTimer *m_scheduleTimer;
@@ -118,4 +125,11 @@ private:
     QString m_pendingLocalPath;
     QString m_pendingConfigPath;
     QMap<QString, bool> m_duplicateDetected;
+
+    LocalWatcher *m_localWatcher = nullptr;
+    RcloneApiClient *m_apiClient = nullptr;
+    QTimer *m_localDebounceTimer = nullptr;
+    QTimer *m_remotePollTimer = nullptr;
+    QMap<QString, QStringList> m_pendingLocalChanges;
+    QMap<QString, QStringList> m_pendingRemoteChanges;
 };

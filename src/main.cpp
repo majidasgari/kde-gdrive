@@ -11,7 +11,7 @@
 #include <KDBusService>
 #include <KLocalizedString>
 
-#include "kde-gdrive-version.h"
+#include "nimbus-gdrive-version.h"
 
 #include "core/RcloneLocator.h"
 #include "core/RcloneDaemon.h"
@@ -29,22 +29,22 @@ int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
     app.setWindowIcon(QIcon(QStringLiteral(":/logo.png")));
-    app.setApplicationName(QStringLiteral("kde-gdrive"));
-    app.setApplicationDisplayName(QStringLiteral("KDE GDrive"));
-    app.setOrganizationDomain(QStringLiteral("kde.org"));
-    app.setApplicationVersion(QStringLiteral(KDE_GDRIVE_VERSION_STRING));
+    app.setApplicationName(QStringLiteral("nimbus-gdrive"));
+    app.setApplicationDisplayName(QStringLiteral("Nimbus Google Drive Client"));
+    app.setOrganizationDomain(QStringLiteral("nimbus.org"));
+    app.setApplicationVersion(QStringLiteral(NIMBUS_GDRIVE_VERSION_STRING));
 
-    KLocalizedString::setApplicationDomain(QStringLiteral("kde-gdrive").toUtf8().constData());
+    KLocalizedString::setApplicationDomain(QStringLiteral("nimbus-gdrive").toUtf8().constData());
 
     KAboutData aboutData(
-        QStringLiteral("kde-gdrive"),
-        QStringLiteral("KDE GDrive"),
-        QStringLiteral(KDE_GDRIVE_VERSION_STRING),
-        QStringLiteral("A stable, fast rclone-based Google Drive client for KDE"),
+        QStringLiteral("nimbus-gdrive"),
+        QStringLiteral("Nimbus Google Drive Client"),
+        QStringLiteral(NIMBUS_GDRIVE_VERSION_STRING),
+        QStringLiteral("A stable, fast rclone-based Google Drive client"),
         KAboutLicense::GPL_V3,
-        QStringLiteral("© 2024 KDE GDrive Contributors")
+        QStringLiteral("© 2026 Nimbus Contributors")
     );
-    aboutData.addAuthor(QStringLiteral("KDE GDrive Contributors"));
+    aboutData.addAuthor(QStringLiteral("Nimbus Contributors"));
     KAboutData::setApplicationData(aboutData);
 
     KDBusService dbusService(KDBusService::Unique);

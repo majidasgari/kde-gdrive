@@ -5,7 +5,7 @@ import org.kde.kirigami as Kirigami
 
 Kirigami.ApplicationWindow {
     id: root
-    title: "KDE GDrive"
+    title: "Nimbus Google Drive Client"
     width: 800
     height: 600
     visible: true
@@ -22,6 +22,15 @@ Kirigami.ApplicationWindow {
                 return;
         }
         pageStack.push(settingsPageComp)
+    }
+
+    function openAboutPage() {
+        for (var i = 0; i < pageStack.depth; i++) {
+            var page = pageStack.get(i)
+            if (page && page.title === "About")
+                return;
+        }
+        pageStack.push(aboutPageComp)
     }
 
     Connections {
@@ -46,16 +55,18 @@ Kirigami.ApplicationWindow {
         }
     }
     Component { id: oauthPageComp; OAuthWizard {} }
+    Component { id: aboutPageComp; AboutPage {} }
 
     pageStack.initialPage: Kirigami.Page {
         id: mainPage
-        title: "KDE GDrive"
+        title: "Nimbus Google Drive Client"
 
         onVisibleChanged: if (visible) mainWindow.refreshRemotes()
 
         actions: [
             Kirigami.Action { text: "Refresh"; icon.name: "view-refresh"; onTriggered: { mainWindow.refreshRemotes(); mainWindow.mountsModel.refresh() } },
-            Kirigami.Action { text: "Settings"; icon.name: "settings-configure"; onTriggered: root.openSettingsPage() }
+            Kirigami.Action { text: "Settings"; icon.name: "settings-configure"; onTriggered: root.openSettingsPage() },
+            Kirigami.Action { text: "About"; icon.name: "help-about"; onTriggered: root.openAboutPage() }
         ]
 
         ColumnLayout {

@@ -13,7 +13,7 @@ TrayIcon::TrayIcon(MountManager *mountManager, RemotesModel *remotesModel, QObje
     , m_mountManager(mountManager)
     , m_remotesModel(remotesModel)
 {
-    m_tray->setTitle(QStringLiteral("KDE GDrive"));
+    m_tray->setTitle(QStringLiteral("Nimbus Google Drive Client"));
     m_tray->setIconByPixmap(QIcon(QStringLiteral(":/logo.png")));
     m_tray->setCategory(KStatusNotifierItem::ApplicationStatus);
     m_tray->setStatus(KStatusNotifierItem::Active);

@@ -1,5 +1,7 @@
 #include "BisyncManager.h"
 #include "config/Settings.h"
+#include "LocalWatcher.h"
+#include "core/RcloneApiClient.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -84,6 +86,23 @@ BisyncManager::BisyncManager(Settings *settings, QObject *parent)
     connect(m_process, &QProcess::errorOccurred, this, &BisyncManager::onProcessError);
 
     connect(m_scheduleTimer, &QTimer::timeout, this, &BisyncManager::checkSchedule);
+
+    m_localWatcher = new LocalWatcher(this);
+    connect(m_localWatcher, &LocalWatcher::localFolderChanged, this, &BisyncManager::onLocalFolderChanged);
+
+    m_localDebounceTimer = new QTimer(this);
+    m_localDebounceTimer->setSingleShot(true);
+    m_localDebounceTimer->setInterval(3000);
+    connect(m_localDebounceTimer, &QTimer::timeout, this, &BisyncManager::onLocalDebounceTimeout);
+
+    m_remotePollTimer = new QTimer(this);
+    m_remotePollTimer->setInterval(30000); // 30 seconds
+    connect(m_remotePollTimer, &QTimer::timeout, this, &BisyncManager::onRemotePollTimeout);
+
+    m_apiClient = new RcloneApiClient(this);
+    connect(m_apiClient, &RcloneApiClient::driveChangesReceived, this, &BisyncManager::onDriveChangesReceived);
+
+    m_remotePollTimer->start();
 }
 
 bool BisyncManager::isRunning() const { return m_running; }
@@ -599,4 +618,143 @@ QTime BisyncManager::nextScheduledTime() const
     }
 
     return QTime(m_scheduleHours.first(), 0);
+}
+
+bool BisyncManager::isSyncQueuedOrRunning(const QString &remoteFs) const
+{
+    if (m_currentRemote == remoteFs)
+        return true;
+
+    if (m_currentRemote == remoteFs + QStringLiteral(" (dedupe)"))
+        return true;
+
+    for (const auto &pair : m_syncQueue) {
+        if (pair.remote == remoteFs)
+            return true;
+    }
+    return false;
+}
+
+void BisyncManager::onLocalFolderChanged(const QString &rootPath, const QString &relativePath)
+{
+    QString remoteName;
+    for (const auto &pair : m_configuredPairs) {
+        if (QDir::cleanPath(pair.localPath) == QDir::cleanPath(rootPath)) {
+            remoteName = pair.remote;
+            break;
+        }
+    }
+    if (remoteName.isEmpty())
+        return;
+
+    QString dirToSync = relativePath;
+    if (dirToSync.endsWith(QLatin1Char('/'))) {
+        dirToSync.chop(1);
+    }
+
+    if (!m_pendingLocalChanges[remoteName].contains(dirToSync)) {
+        m_pendingLocalChanges[remoteName].append(dirToSync);
+    }
+
+    m_localDebounceTimer->start();
+}
+
+void BisyncManager::onLocalDebounceTimeout()
+{
+    auto it = m_pendingLocalChanges.begin();
+    while (it != m_pendingLocalChanges.end()) {
+        QString remote = it.key();
+        QStringList dirs = it.value();
+        if (!dirs.isEmpty()) {
+            QString baseLocalPath = localPathForRemote(remote);
+            if (!baseLocalPath.isEmpty()) {
+                for (const QString &sub : dirs) {
+                    QString cleanSub = sub;
+                    if (cleanSub.startsWith(QLatin1Char('/'))) cleanSub.remove(0, 1);
+
+                    QString remoteFs = remote + QStringLiteral(":") + cleanSub;
+                    QString localPath = baseLocalPath + (cleanSub.isEmpty() ? QString() : (QStringLiteral("/") + cleanSub));
+
+                    if (!isSyncQueuedOrRunning(remoteFs)) {
+                        qDebug() << "BisyncManager: Local watch triggered sync for remote:" << remoteFs << "local:" << localPath;
+                        startSync(remoteFs, localPath);
+                    }
+                }
+            }
+            it.value().clear();
+        }
+        ++it;
+    }
+}
+
+void BisyncManager::onRemotePollTimeout()
+{
+    m_apiClient->setBaseUrl(QStringLiteral("http://127.0.0.1:%1").arg(m_settings->rclonePort()));
+
+    for (const auto &pair : m_configuredPairs) {
+        QString token = m_settings->pageTokenForRemote(pair.remote);
+        m_apiClient->getDriveChanges(pair.remote, token);
+    }
+}
+
+void BisyncManager::onDriveChangesReceived(const QString &remote, const QJsonObject &response)
+{
+    if (response.contains(QStringLiteral("error"))) {
+        qWarning() << "BisyncManager: Changes API returned error for" << remote << ":" << response[QStringLiteral("error")].toString();
+        return;
+    }
+
+    QJsonObject result = response.value(QStringLiteral("result")).toObject();
+    QString newToken = result.value(QStringLiteral("pageToken")).toString();
+    if (newToken.isEmpty())
+        return;
+
+    QString oldToken = m_settings->pageTokenForRemote(remote);
+    m_settings->setPageTokenForRemote(remote, newToken);
+
+    if (oldToken.isEmpty()) {
+        qDebug() << "BisyncManager: Initialized pageToken for" << remote << "to" << newToken;
+        return;
+    }
+
+    QJsonArray changes = result.value(QStringLiteral("changes")).toArray();
+    if (changes.isEmpty())
+        return;
+
+    qDebug() << "BisyncManager: Received" << changes.size() << "remote changes for" << remote;
+
+    QString baseLocalPath = localPathForRemote(remote);
+    if (baseLocalPath.isEmpty())
+        return;
+
+    QStringList subdirsToSync;
+
+    for (int i = 0; i < changes.size(); ++i) {
+        QJsonObject change = changes.at(i).toObject();
+        QString name = change.value(QStringLiteral("name")).toString();
+        if (name.isEmpty())
+            continue;
+
+        name = QDir::cleanPath(name);
+
+        QFileInfo fi(name);
+        QString relativeDir = fi.path();
+        if (relativeDir == QStringLiteral(".") || relativeDir.isEmpty()) {
+            relativeDir = QString();
+        }
+
+        if (!subdirsToSync.contains(relativeDir)) {
+            subdirsToSync.append(relativeDir);
+        }
+    }
+
+    for (const QString &sub : subdirsToSync) {
+        QString remoteFs = remote + QStringLiteral(":") + sub;
+        QString localPath = baseLocalPath + (sub.isEmpty() ? QString() : (QStringLiteral("/") + sub));
+
+        if (!isSyncQueuedOrRunning(remoteFs)) {
+            qDebug() << "BisyncManager: Remote watch triggered sync for remote:" << remoteFs << "local:" << localPath;
+            startSync(remoteFs, localPath);
+        }
+    }
 }

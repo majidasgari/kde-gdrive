@@ -36,6 +36,7 @@ public:
     Q_INVOKABLE void refreshMounts();
     Q_INVOKABLE void openMountPoint(const QString &remoteName);
     Q_INVOKABLE void openSettings();
+    Q_INVOKABLE void copyToClipboard(const QString &text);
 
 Q_SIGNALS:
     void rcloneVersionChanged();

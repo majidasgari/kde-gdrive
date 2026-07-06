@@ -267,3 +267,23 @@ void RcloneApiClient::dumpConfig()
         Q_EMIT configDumpReceived(obj);
     });
 }
+
+void RcloneApiClient::getDriveChanges(const QString &remote, const QString &pageToken)
+{
+    QJsonObject params;
+    params[QStringLiteral("command")] = QStringLiteral("changes");
+    params[QStringLiteral("fs")] = QString(remote + QStringLiteral(":"));
+
+    QJsonArray argsArray;
+    params[QStringLiteral("arg")] = argsArray;
+
+    QJsonObject opts;
+    if (!pageToken.isEmpty()) {
+        opts[QStringLiteral("pageToken")] = pageToken;
+    }
+    params[QStringLiteral("opt")] = opts;
+
+    sendRequest(QStringLiteral("backend/command"), params, [this, remote](int, const QJsonObject &obj) {
+        Q_EMIT driveChangesReceived(remote, obj);
+    });
+}

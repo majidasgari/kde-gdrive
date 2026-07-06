@@ -197,7 +197,20 @@ void Settings::setMountPathForRemote(const QString &remoteName, const QString &p
     Q_EMIT settingsChanged();
 }
 
+QString Settings::pageTokenForRemote(const QString &remoteName) const
+{
+    KConfigGroup tokensGroup = m_config.group(QLatin1String("PageTokens"));
+    return tokensGroup.readEntry(remoteName, QString());
+}
+
+void Settings::setPageTokenForRemote(const QString &remoteName, const QString &token)
+{
+    KConfigGroup tokensGroup = m_config.group(QLatin1String("PageTokens"));
+    tokensGroup.writeEntry(remoteName, token);
+    tokensGroup.sync();
+}
+
 QString Settings::applicationName() const
 {
-    return QStringLiteral("KDE GDrive");
+    return QStringLiteral("Nimbus Google Drive Client");
 }

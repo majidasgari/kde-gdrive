@@ -68,6 +68,9 @@ public:
     Q_INVOKABLE QString mountPathForRemote(const QString &remoteName) const;
     Q_INVOKABLE void setMountPathForRemote(const QString &remoteName, const QString &path);
 
+    Q_INVOKABLE QString pageTokenForRemote(const QString &remoteName) const;
+    Q_INVOKABLE void setPageTokenForRemote(const QString &remoteName, const QString &token);
+
 Q_SIGNALS:
     void settingsChanged();
 

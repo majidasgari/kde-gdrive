@@ -1,5 +1,5 @@
 # --- Desktop file -----------------------------------------------------------
-install(FILES org.kde.kdegdrive.desktop
+install(FILES org.nimbus.gdrive.desktop
     DESTINATION ${KDE_INSTALL_APPDIR}
 )
 

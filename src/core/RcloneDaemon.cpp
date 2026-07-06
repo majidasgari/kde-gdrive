@@ -111,6 +111,7 @@ void RcloneDaemon::onProcessStarted()
 
 void RcloneDaemon::onProcessFinished(int exitCode, QProcess::ExitStatus status)
 {
+    Q_UNUSED(exitCode);
     bool wasIntended = m_intendedStart;
     m_intendedStart = false;
 
