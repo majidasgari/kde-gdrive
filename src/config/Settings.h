@@ -21,6 +21,7 @@ class Settings : public QObject
     Q_PROPERTY(bool syncEnabled READ syncEnabled WRITE setSyncEnabled NOTIFY settingsChanged)
     Q_PROPERTY(QString syncExcludePatterns READ syncExcludePatterns WRITE setSyncExcludePatterns NOTIFY settingsChanged)
     Q_PROPERTY(QString dedupeMode READ dedupeMode WRITE setDedupeMode NOTIFY settingsChanged)
+    Q_PROPERTY(int syncPollInterval READ syncPollInterval WRITE setSyncPollInterval NOTIFY settingsChanged)
 
 public:
     explicit Settings(QObject *parent = nullptr);
@@ -60,6 +61,9 @@ public:
 
     bool syncEnabled() const;
     void setSyncEnabled(bool enabled);
+
+    int syncPollInterval() const;
+    void setSyncPollInterval(int seconds);
 
     // Per-remote paths
     Q_INVOKABLE QString syncPathForRemote(const QString &remoteName) const;

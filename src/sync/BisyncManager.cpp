@@ -96,8 +96,12 @@ BisyncManager::BisyncManager(Settings *settings, QObject *parent)
     connect(m_localDebounceTimer, &QTimer::timeout, this, &BisyncManager::onLocalDebounceTimeout);
 
     m_remotePollTimer = new QTimer(this);
-    m_remotePollTimer->setInterval(30000); // 30 seconds
+    m_remotePollTimer->setInterval(m_settings->syncPollInterval() * 1000);
     connect(m_remotePollTimer, &QTimer::timeout, this, &BisyncManager::onRemotePollTimeout);
+
+    connect(m_settings, &Settings::settingsChanged, this, [this]() {
+        m_remotePollTimer->setInterval(m_settings->syncPollInterval() * 1000);
+    });
 
     m_apiClient = new RcloneApiClient(this);
     connect(m_apiClient, &RcloneApiClient::driveChangesReceived, this, &BisyncManager::onDriveChangesReceived);

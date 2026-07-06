@@ -18,6 +18,7 @@ static const char *GROUP_REMOTE_PATHS = "RemotePaths";
 
 static const char *KEY_SYNC_EXCLUDE_PATTERNS = "syncExcludePatterns";
 static const char *KEY_DEDUPE_MODE = "dedupeMode";
+static const char *KEY_SYNC_POLL_INTERVAL = "syncPollInterval";
 
 Settings::Settings(QObject *parent)
     : QObject(parent)
@@ -208,6 +209,18 @@ void Settings::setPageTokenForRemote(const QString &remoteName, const QString &t
     KConfigGroup tokensGroup = m_config.group(QLatin1String("PageTokens"));
     tokensGroup.writeEntry(remoteName, token);
     tokensGroup.sync();
+}
+
+int Settings::syncPollInterval() const
+{
+    return group().readEntry(KEY_SYNC_POLL_INTERVAL, 60);
+}
+
+void Settings::setSyncPollInterval(int seconds)
+{
+    group().writeEntry(KEY_SYNC_POLL_INTERVAL, seconds);
+    group().sync();
+    Q_EMIT settingsChanged();
 }
 
 QString Settings::applicationName() const

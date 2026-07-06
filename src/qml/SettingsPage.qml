@@ -24,6 +24,7 @@ Kirigami.Page {
                 settings.syncTimes = syncTimesField.text
                 settings.syncExcludePatterns = excludePatternsField.text
                 settings.dedupeMode = dedupeModeCb.currentText
+                settings.syncPollInterval = pollIntervalSpin.value
                 settings.rclonePort = portSpin.value
                 settings.autoStartDaemon = autoStartCb.checked
                 settings.autoMountOnStart = autoMountCb.checked
@@ -106,6 +107,19 @@ Kirigami.Page {
                 }
             }
 
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.largeSpacing
+                Label { text: "Poll Interval (sec):"; Layout.preferredWidth: 120 }
+                SpinBox {
+                    id: pollIntervalSpin
+                    from: 5
+                    to: 3600
+                    stepSize: 5
+                    Layout.fillWidth: true
+                }
+            }
+
             Label {
                 text: "Per-remote sync paths: set in remote detail (double-click)."
                 color: Kirigami.Theme.disabledTextColor
@@ -156,6 +170,7 @@ Kirigami.Page {
         autoMountCb.checked = settings.autoMountOnStart
         syncTimesField.text = settings.syncTimes
         excludePatternsField.text = settings.syncExcludePatterns || ".directory, .DS_Store, desktop.ini"
+        pollIntervalSpin.value = settings.syncPollInterval
         if (settings.syncResyncMode === "older") resyncModeCb.currentIndex = 0
         else if (settings.syncResyncMode === "newer") resyncModeCb.currentIndex = 1
         else resyncModeCb.currentIndex = 2
@@ -175,6 +190,7 @@ Kirigami.Page {
             autoMountCb.checked = settings.autoMountOnStart
             syncTimesField.text = settings.syncTimes
             excludePatternsField.text = settings.syncExcludePatterns || ".directory, .DS_Store, desktop.ini"
+            pollIntervalSpin.value = settings.syncPollInterval
             if (settings.dedupeMode === "rename") dedupeModeCb.currentIndex = 0
             else if (settings.dedupeMode === "newest") dedupeModeCb.currentIndex = 1
             else if (settings.dedupeMode === "largest") dedupeModeCb.currentIndex = 2
