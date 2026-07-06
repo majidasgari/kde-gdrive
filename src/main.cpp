@@ -109,13 +109,18 @@ int main(int argc, char *argv[])
 
     engine.load(QUrl(QStringLiteral("qrc:/qml/MainWindow.qml")));
 
-    // Show window when tray icon is clicked
+    // Show/hide window when tray icon is clicked
     QObject::connect(trayIcon, &TrayIcon::openMainWindowRequested, [&engine]() {
         for (auto *obj : engine.rootObjects()) {
             if (auto *window = qobject_cast<QWindow *>(obj)) {
-                window->setVisible(true);
-                window->raise();
-                window->requestActivate();
+                if (window->isVisible() && !(window->windowState() & Qt::WindowMinimized)) {
+                    window->setVisible(false);
+                } else {
+                    window->setVisible(true);
+                    window->setWindowState(static_cast<Qt::WindowState>(window->windowState() & ~Qt::WindowMinimized));
+                    window->raise();
+                    window->requestActivate();
+                }
             }
         }
     });
