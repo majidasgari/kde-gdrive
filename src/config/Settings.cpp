@@ -16,6 +16,9 @@ static const char *KEY_SYNC_TIMES = "syncTimes";
 static const char *KEY_SYNC_ENABLED = "syncEnabled";
 static const char *GROUP_REMOTE_PATHS = "RemotePaths";
 
+static const char *KEY_SYNC_EXCLUDE_PATTERNS = "syncExcludePatterns";
+static const char *KEY_DEDUPE_MODE = "dedupeMode";
+
 Settings::Settings(QObject *parent)
     : QObject(parent)
     , m_config(QStringLiteral("kdegdriverc"))
@@ -136,6 +139,30 @@ bool Settings::syncEnabled() const
 void Settings::setSyncEnabled(bool enabled)
 {
     group().writeEntry(KEY_SYNC_ENABLED, enabled);
+    group().sync();
+    Q_EMIT settingsChanged();
+}
+
+QString Settings::syncExcludePatterns() const
+{
+    return group().readEntry(KEY_SYNC_EXCLUDE_PATTERNS, QStringLiteral(".directory, .DS_Store, desktop.ini"));
+}
+
+void Settings::setSyncExcludePatterns(const QString &patterns)
+{
+    group().writeEntry(KEY_SYNC_EXCLUDE_PATTERNS, patterns);
+    group().sync();
+    Q_EMIT settingsChanged();
+}
+
+QString Settings::dedupeMode() const
+{
+    return group().readEntry(KEY_DEDUPE_MODE, QStringLiteral("rename"));
+}
+
+void Settings::setDedupeMode(const QString &mode)
+{
+    group().writeEntry(KEY_DEDUPE_MODE, mode);
     group().sync();
     Q_EMIT settingsChanged();
 }

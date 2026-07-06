@@ -16,8 +16,23 @@ Kirigami.Page {
             onTriggered: root.addRemoteClicked()
         },
         Kirigami.Action {
-            text: "Close"
-            icon.name: "window-close"
+            text: "Save"
+            icon.name: "document-save"
+            onTriggered: {
+                settings.syncEnabled = syncEnabledCb.checked
+                settings.syncResyncMode = resyncModeCb.currentText
+                settings.syncTimes = syncTimesField.text
+                settings.syncExcludePatterns = excludePatternsField.text
+                settings.dedupeMode = dedupeModeCb.currentText
+                settings.rclonePort = portSpin.value
+                settings.autoStartDaemon = autoStartCb.checked
+                settings.autoMountOnStart = autoMountCb.checked
+                pageStack.pop()
+            }
+        },
+        Kirigami.Action {
+            text: "Cancel"
+            icon.name: "dialog-cancel"
             onTriggered: pageStack.pop()
         }
     ]
@@ -44,7 +59,7 @@ Kirigami.Page {
                 Layout.fillWidth: true
                 spacing: Kirigami.Units.largeSpacing
                 Label { text: "Enable bisync:"; Layout.preferredWidth: 120 }
-                CheckBox { id: syncEnabledCb; onToggled: settings.syncEnabled = checked }
+                CheckBox { id: syncEnabledCb }
             }
 
             RowLayout {
@@ -55,7 +70,6 @@ Kirigami.Page {
                     id: resyncModeCb
                     model: ["older", "newer", "none"]
                     Layout.fillWidth: true
-                    onCurrentValueChanged: settings.syncResyncMode = currentValue
                 }
             }
 
@@ -67,7 +81,28 @@ Kirigami.Page {
                     id: syncTimesField
                     Layout.fillWidth: true
                     placeholderText: "10,18,23"
-                    onEditingFinished: settings.syncTimes = text
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.largeSpacing
+                Label { text: "Exclude patterns:"; Layout.preferredWidth: 120 }
+                TextField {
+                    id: excludePatternsField
+                    Layout.fillWidth: true
+                    text: ".directory, .DS_Store, desktop.ini"
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.largeSpacing
+                Label { text: "Dedupe mode:"; Layout.preferredWidth: 120 }
+                ComboBox {
+                    id: dedupeModeCb
+                    model: ["rename", "newest", "largest", "oldest"]
+                    Layout.fillWidth: true
                 }
             }
 
@@ -93,7 +128,6 @@ Kirigami.Page {
                     from: 1024
                     to: 65535
                     Layout.fillWidth: true
-                    onValueChanged: settings.rclonePort = value
                 }
             }
 
@@ -101,14 +135,14 @@ Kirigami.Page {
                 Layout.fillWidth: true
                 spacing: Kirigami.Units.largeSpacing
                 Label { text: "Auto-start daemon:"; Layout.preferredWidth: 120 }
-                CheckBox { id: autoStartCb; onToggled: settings.autoStartDaemon = checked }
+                CheckBox { id: autoStartCb }
             }
 
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Kirigami.Units.largeSpacing
                 Label { text: "Auto-mount:"; Layout.preferredWidth: 120 }
-                CheckBox { id: autoMountCb; onToggled: settings.autoMountOnStart = checked }
+                CheckBox { id: autoMountCb }
             }
 
             Item { Layout.fillHeight: true }
@@ -121,9 +155,15 @@ Kirigami.Page {
         autoStartCb.checked = settings.autoStartDaemon
         autoMountCb.checked = settings.autoMountOnStart
         syncTimesField.text = settings.syncTimes
+        excludePatternsField.text = settings.syncExcludePatterns || ".directory, .DS_Store, desktop.ini"
         if (settings.syncResyncMode === "older") resyncModeCb.currentIndex = 0
         else if (settings.syncResyncMode === "newer") resyncModeCb.currentIndex = 1
         else resyncModeCb.currentIndex = 2
+
+        if (settings.dedupeMode === "rename") dedupeModeCb.currentIndex = 0
+        else if (settings.dedupeMode === "newest") dedupeModeCb.currentIndex = 1
+        else if (settings.dedupeMode === "largest") dedupeModeCb.currentIndex = 2
+        else dedupeModeCb.currentIndex = 3
     }
 
     Connections {
@@ -134,6 +174,11 @@ Kirigami.Page {
             autoStartCb.checked = settings.autoStartDaemon
             autoMountCb.checked = settings.autoMountOnStart
             syncTimesField.text = settings.syncTimes
+            excludePatternsField.text = settings.syncExcludePatterns || ".directory, .DS_Store, desktop.ini"
+            if (settings.dedupeMode === "rename") dedupeModeCb.currentIndex = 0
+            else if (settings.dedupeMode === "newest") dedupeModeCb.currentIndex = 1
+            else if (settings.dedupeMode === "largest") dedupeModeCb.currentIndex = 2
+            else dedupeModeCb.currentIndex = 3
         }
     }
 }

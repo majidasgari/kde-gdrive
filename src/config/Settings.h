@@ -19,9 +19,17 @@ class Settings : public QObject
     Q_PROPERTY(QString syncResyncMode READ syncResyncMode WRITE setSyncResyncMode NOTIFY settingsChanged)
     Q_PROPERTY(QString syncTimes READ syncTimes WRITE setSyncTimes NOTIFY settingsChanged)
     Q_PROPERTY(bool syncEnabled READ syncEnabled WRITE setSyncEnabled NOTIFY settingsChanged)
+    Q_PROPERTY(QString syncExcludePatterns READ syncExcludePatterns WRITE setSyncExcludePatterns NOTIFY settingsChanged)
+    Q_PROPERTY(QString dedupeMode READ dedupeMode WRITE setDedupeMode NOTIFY settingsChanged)
 
 public:
     explicit Settings(QObject *parent = nullptr);
+
+    QString syncExcludePatterns() const;
+    void setSyncExcludePatterns(const QString &patterns);
+
+    QString dedupeMode() const;
+    void setDedupeMode(const QString &mode);
 
     int rclonePort() const;
     void setRclonePort(int port);

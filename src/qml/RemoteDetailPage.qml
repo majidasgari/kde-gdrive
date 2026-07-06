@@ -23,6 +23,15 @@ Kirigami.Page {
             }
         },
         Kirigami.Action {
+            text: "Deduplicate"
+            icon.name: "document-cleanup"
+            enabled: !bisync.running
+            onTriggered: {
+                bisync.runDedupe(remoteName)
+                pageStack.pop() // Pop back to MainWindow to see terminal output
+            }
+        },
+        Kirigami.Action {
             text: "Close"
             icon.name: "window-close"
             onTriggered: pageStack.pop()

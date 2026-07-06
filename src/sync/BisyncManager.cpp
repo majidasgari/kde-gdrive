@@ -175,24 +175,21 @@ void BisyncManager::startSync(const QString &remote, const QString &localPath)
         dir.mkpath(QStringLiteral("."));
     }
 
-    QStringList args;
-    args << QStringLiteral("bisync")
-         << remote + QStringLiteral(":")
-         << localPath
-         << QStringLiteral("--resync-mode") << m_resyncMode
-         << QStringLiteral("--create-empty-src-dirs")
-         << QStringLiteral("--compare") << QStringLiteral("size,modtime")
-         << QStringLiteral("--ignore-listing-checksum")
-         << QStringLiteral("--verbose");
-
-    if (m_forceFlag)
-        args << QStringLiteral("--force");
-
     m_currentRemote = remote;
     m_currentOutput.clear();
     m_running = true;
     Q_EMIT runningChanged();
     Q_EMIT syncStarted(remote);
+
+    m_currentStep = StepDedupe;
+    m_pendingLocalPath = localPath;
+    m_pendingConfigPath.clear();
+
+    QStringList args;
+    args << QStringLiteral("dedupe")
+         << remote + QStringLiteral(":")
+         << QStringLiteral("--dedupe-mode") << m_settings->dedupeMode()
+         << QStringLiteral("--verbose");
 
     m_process->start(QStringLiteral("rclone"), args);
 }
@@ -213,21 +210,45 @@ void BisyncManager::startSyncWithConfig(const QString &remote, const QString &lo
         dir.mkpath(QStringLiteral("."));
     }
 
+    m_currentRemote = remote;
+    m_currentOutput.clear();
+    m_running = true;
+    Q_EMIT runningChanged();
+    Q_EMIT syncStarted(remote);
+
+    m_currentStep = StepDedupe;
+    m_pendingLocalPath = localPath;
+    m_pendingConfigPath = configPath;
+
     QStringList args;
-    args << QStringLiteral("bisync")
+    args << QStringLiteral("dedupe")
          << remote + QStringLiteral(":")
-         << localPath
-         << QStringLiteral("--config") << configPath
-         << QStringLiteral("--resync-mode") << m_resyncMode
-         << QStringLiteral("--create-empty-src-dirs")
-         << QStringLiteral("--compare") << QStringLiteral("size,modtime")
-         << QStringLiteral("--ignore-listing-checksum")
+         << QStringLiteral("--dedupe-mode") << m_settings->dedupeMode()
+         << QStringLiteral("--verbose");
+    if (!configPath.isEmpty()) {
+        args << QStringLiteral("--config") << configPath;
+    }
+
+    m_process->start(QStringLiteral("rclone"), args);
+}
+
+void BisyncManager::runDedupe(const QString &remote)
+{
+    if (m_running)
+        return;
+
+    if (remote.isEmpty())
+        return;
+
+    m_currentStep = StepNone; // Manual dedupe
+
+    QStringList args;
+    args << QStringLiteral("dedupe")
+         << remote + QStringLiteral(":")
+         << QStringLiteral("--dedupe-mode") << m_settings->dedupeMode()
          << QStringLiteral("--verbose");
 
-    if (m_forceFlag)
-        args << QStringLiteral("--force");
-
-    m_currentRemote = remote;
+    m_currentRemote = remote + QStringLiteral(" (dedupe)");
     m_currentOutput.clear();
     m_running = true;
     Q_EMIT runningChanged();
@@ -354,28 +375,78 @@ void BisyncManager::onReadyReadStderr()
 
 void BisyncManager::onProcessFinished(int exitCode, QProcess::ExitStatus status)
 {
-    m_running = false;
-    Q_EMIT runningChanged();
-
     onReadyReadStdout();
     onReadyReadStderr();
 
     if (status == QProcess::CrashExit) {
+        m_running = false;
+        m_currentStep = StepNone;
+        Q_EMIT runningChanged();
         updateLastSync(QStringLiteral("Crashed"));
-        Q_EMIT syncFailed(QStringLiteral("Bisync process crashed"));
+        Q_EMIT syncFailed(QStringLiteral("Rclone process crashed"));
         return;
     }
 
-    if (exitCode == 0) {
-        updateLastSync(QStringLiteral("Success: %1").arg(m_currentRemote));
-        Q_EMIT syncCompleted(true, QStringLiteral("Sync of %1 completed successfully").arg(m_currentRemote));
-    } else {
+    if (exitCode != 0) {
+        m_running = false;
+        m_currentStep = StepNone;
+        Q_EMIT runningChanged();
         QString error = QString::fromUtf8(m_process->readAllStandardError());
         updateLastSync(QStringLiteral("Failed: %1").arg(m_currentRemote));
         Q_EMIT syncFailed(error.isEmpty()
-            ? QStringLiteral("Sync of %1 failed (code %2)").arg(m_currentRemote).arg(exitCode)
+            ? QStringLiteral("Operation on %1 failed (code %2)").arg(m_currentRemote).arg(exitCode)
             : error);
+
+        m_currentRemote.clear();
+        if (!m_syncQueue.isEmpty())
+            QTimer::singleShot(2000, this, &BisyncManager::runNextQueued);
+        return;
     }
+
+    if (m_currentStep == StepDedupe) {
+        // Dedupe step finished successfully, now run bisync step!
+        m_currentStep = StepBisync;
+
+        QStringList args;
+        args << QStringLiteral("bisync")
+             << m_currentRemote + QStringLiteral(":")
+             << m_pendingLocalPath;
+
+        if (!m_pendingConfigPath.isEmpty()) {
+            args << QStringLiteral("--config") << m_pendingConfigPath;
+        }
+
+        args << QStringLiteral("--resync-mode") << m_resyncMode
+             << QStringLiteral("--create-empty-src-dirs")
+             << QStringLiteral("--compare") << QStringLiteral("size,modtime")
+             << QStringLiteral("--ignore-listing-checksum")
+             << QStringLiteral("--verbose");
+
+        // Add exclude patterns from settings
+        QString excludePatterns = m_settings->syncExcludePatterns();
+        if (!excludePatterns.isEmpty()) {
+            QStringList patterns = excludePatterns.split(QLatin1Char(','), Qt::SkipEmptyParts);
+            for (const QString &pattern : patterns) {
+                QString trimmed = pattern.trimmed();
+                if (!trimmed.isEmpty()) {
+                    args << QStringLiteral("--exclude") << trimmed;
+                }
+            }
+        }
+
+        if (m_forceFlag)
+            args << QStringLiteral("--force");
+
+        m_process->start(QStringLiteral("rclone"), args);
+        return;
+    }
+
+    m_running = false;
+    m_currentStep = StepNone;
+    Q_EMIT runningChanged();
+
+    updateLastSync(QStringLiteral("Success: %1").arg(m_currentRemote));
+    Q_EMIT syncCompleted(true, QStringLiteral("Sync of %1 completed successfully").arg(m_currentRemote));
 
     m_currentRemote.clear();
 
@@ -386,10 +457,12 @@ void BisyncManager::onProcessFinished(int exitCode, QProcess::ExitStatus status)
 
 void BisyncManager::onProcessError(QProcess::ProcessError error)
 {
+    Q_UNUSED(error);
     m_running = false;
+    m_currentStep = StepNone;
     Q_EMIT runningChanged();
     updateLastSync(QStringLiteral("Error: %1").arg(m_currentRemote));
-    Q_EMIT syncFailed(QStringLiteral("Failed to start rclone bisync: %1").arg(m_process->errorString()));
+    Q_EMIT syncFailed(QStringLiteral("Failed to start rclone: %1").arg(m_process->errorString()));
     m_currentRemote.clear();
 }
 

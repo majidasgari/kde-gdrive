@@ -15,11 +15,19 @@ Kirigami.ApplicationWindow {
         root.visible = false
     }
 
+    function openSettingsPage() {
+        for (var i = 0; i < pageStack.depth; i++) {
+            var page = pageStack.get(i)
+            if (page && page.title === "Settings")
+                return;
+        }
+        pageStack.push(settingsPageComp)
+    }
+
     Connections {
         target: mainWindow
         function onSettingsRequested() {
-            if (pageStack.depth < 2)
-                pageStack.push(settingsPageComp)
+            root.openSettingsPage()
         }
     }
 
@@ -35,7 +43,7 @@ Kirigami.ApplicationWindow {
 
         actions: [
             Kirigami.Action { text: "Refresh"; icon.name: "view-refresh"; onTriggered: { mainWindow.refreshRemotes(); mainWindow.mountsModel.refresh() } },
-            Kirigami.Action { text: "Settings"; icon.name: "settings-configure"; onTriggered: pageStack.push(settingsPageComp) }
+            Kirigami.Action { text: "Settings"; icon.name: "settings-configure"; onTriggered: root.openSettingsPage() }
         ]
 
         ColumnLayout {

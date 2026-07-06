@@ -61,6 +61,7 @@ public:
 public Q_SLOTS:
     void startSync(const QString &remote, const QString &localPath);
     void startSyncWithConfig(const QString &remote, const QString &localPath, const QString &configPath);
+    void runDedupe(const QString &remote);
     void startAllSyncs();
     void cancel();
     void clearLockAndRetry();
@@ -107,4 +108,13 @@ private:
     // Sync queue for sequential execution
     QList<SyncPair> m_syncQueue;
     QList<SyncPair> m_configuredPairs;
+
+    enum SyncStep {
+        StepNone,
+        StepDedupe,
+        StepBisync
+    };
+    SyncStep m_currentStep = StepNone;
+    QString m_pendingLocalPath;
+    QString m_pendingConfigPath;
 };
