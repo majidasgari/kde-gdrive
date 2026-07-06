@@ -308,3 +308,89 @@ void RcloneApiClient::fetchDriveChangesDirect(const QString &remote, const QStri
         }
     });
 }
+
+struct RcloneApiClient::ResolverContext : public QObject {
+    RcloneApiClient *client;
+    QString remote;
+    QString accessToken;
+    QString folderId;
+    QString name;
+    QString parentId;
+
+    ResolverContext(RcloneApiClient *c, const QString &rem, const QString &token, const QString &fId, const QString &n, const QString &pId)
+        : QObject(c), client(c), remote(rem), accessToken(token), folderId(fId), name(n), parentId(pId)
+    {
+        connect(client, &RcloneApiClient::directoryPathResolved, this, &ResolverContext::onParentResolved);
+    }
+
+    void start() {
+        client->resolveDirectoryPath(remote, accessToken, parentId);
+    }
+
+    void onParentResolved(const QString &rem, const QString &pId, const QString &parentPath) {
+        if (rem == remote && pId == parentId) {
+            // Parent resolved!
+            QString resolvedPath = parentPath.isEmpty() ? name : (parentPath + QLatin1Char('/') + name);
+            client->m_resolvedPaths[folderId] = resolvedPath;
+            Q_EMIT client->directoryPathResolved(remote, folderId, resolvedPath);
+            this->deleteLater();
+        }
+    }
+};
+
+void RcloneApiClient::resolveDirectoryPath(const QString &remote, const QString &accessToken, const QString &folderId)
+{
+    if (m_resolvedPaths.contains(folderId)) {
+        Q_EMIT directoryPathResolved(remote, folderId, m_resolvedPaths.value(folderId));
+        return;
+    }
+
+    QUrl url(QStringLiteral("https://www.googleapis.com/drive/v3/files/") + folderId);
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("fields"), QStringLiteral("name,parents"));
+    url.setQuery(query);
+
+    QNetworkRequest request(url);
+    request.setRawHeader("Authorization", QString(QStringLiteral("Bearer ") + accessToken).toUtf8());
+
+    QNetworkReply *reply = m_networkManager->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, remote, accessToken, folderId]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            qWarning() << "RcloneApiClient: resolveDirectoryPath error for" << folderId << ":" << reply->errorString();
+            Q_EMIT directoryPathResolved(remote, folderId, QString()); // Fail
+            return;
+        }
+
+        QByteArray data = reply->readAll();
+        QJsonDocument doc = QJsonDocument::fromJson(data);
+        if (!doc.isObject()) {
+            Q_EMIT directoryPathResolved(remote, folderId, QString()); // Fail
+            return;
+        }
+
+        QJsonObject obj = doc.object();
+        QString name = obj.value(QStringLiteral("name")).toString();
+        QJsonArray parents = obj.value(QStringLiteral("parents")).toArray();
+
+        if (parents.isEmpty()) {
+            // We reached the root (or a shared drive root)
+            m_resolvedPaths[folderId] = QString();
+            Q_EMIT directoryPathResolved(remote, folderId, QString());
+            return;
+        }
+
+        QString parentId = parents.at(0).toString();
+
+        if (m_resolvedPaths.contains(parentId)) {
+            QString parentPath = m_resolvedPaths.value(parentId);
+            QString resolvedPath = parentPath.isEmpty() ? name : (parentPath + QLatin1Char('/') + name);
+            m_resolvedPaths[folderId] = resolvedPath;
+            Q_EMIT directoryPathResolved(remote, folderId, resolvedPath);
+            return;
+        }
+
+        auto *context = new ResolverContext(this, remote, accessToken, folderId, name, parentId);
+        context->start();
+    });
+}

@@ -150,6 +150,7 @@ BisyncManager::BisyncManager(Settings *settings, QObject *parent)
     m_apiClient = new RcloneApiClient(this);
     connect(m_apiClient, &RcloneApiClient::driveChangesReceived, this, &BisyncManager::onDriveChangesReceived);
     connect(m_apiClient, &RcloneApiClient::configDumpReceived, this, &BisyncManager::onConfigDumpReceived);
+    connect(m_apiClient, &RcloneApiClient::directoryPathResolved, this, &BisyncManager::onDirectoryPathResolved);
 
     updatePollTimerState();
     m_statusText = QStringLiteral("Idle. Watching for changes...");
@@ -184,14 +185,21 @@ void BisyncManager::addSyncPair(const QString &remote, const QString &localPath)
     for (int i = 0; i < m_configuredPairs.size(); i++) {
         if (m_configuredPairs[i].remote == remote) {
             m_configuredPairs[i].localPath = localPath;
+            m_localWatcher->addPath(localPath);
             return;
         }
     }
     m_configuredPairs.append({remote, localPath});
+    m_localWatcher->addPath(localPath);
 }
 
 void BisyncManager::removeSyncPair(const QString &remote)
 {
+    for (const auto &p : m_configuredPairs) {
+        if (p.remote == remote) {
+            m_localWatcher->removePath(p.localPath);
+        }
+    }
     m_configuredPairs.erase(
         std::remove_if(m_configuredPairs.begin(), m_configuredPairs.end(),
                         [&](const SyncPair &p) { return p.remote == remote; }),
@@ -214,8 +222,10 @@ void BisyncManager::populatePairs(const QStringList &remoteNames)
     m_configuredPairs.clear();
     for (const QString &name : remoteNames) {
         QString path = m_settings->syncPathForRemote(name);
-        if (!path.isEmpty())
+        if (!path.isEmpty()) {
             m_configuredPairs.append({name, path});
+            m_localWatcher->addPath(path);
+        }
     }
 }
 
@@ -789,6 +799,8 @@ void BisyncManager::onConfigDumpReceived(const QJsonObject &config)
         if (accessToken.isEmpty())
             continue;
 
+        m_lastAccessTokens[pair.remote] = accessToken;
+
         QString pageToken = m_settings->pageTokenForRemote(pair.remote);
         m_apiClient->fetchDriveChangesDirect(pair.remote, accessToken, pageToken);
     }
@@ -836,14 +848,67 @@ void BisyncManager::onDriveChangesReceived(const QString &remote, const QJsonObj
     if (baseLocalPath.isEmpty())
         return;
 
-    if (!m_scheduleHours.isEmpty()) {
-        if (!isSyncQueuedOrRunning(remote)) {
-            qDebug() << "BisyncManager: Remote changes detected. Triggering sync for" << remote << "at path:" << baseLocalPath;
-            startSync(remote, baseLocalPath);
+    QString accessToken = m_lastAccessTokens.value(remote);
+    if (accessToken.isEmpty()) {
+        qWarning() << "BisyncManager: No access token found for remote" << remote;
+        return;
+    }
+
+    // Collect all unique parent folder IDs from changes
+    QStringList parentIds;
+    for (const auto &changeVal : changes) {
+        QJsonObject change = changeVal.toObject();
+        QJsonObject file = change.value(QStringLiteral("file")).toObject();
+        QJsonArray parents = file.value(QStringLiteral("parents")).toArray();
+        for (const auto &pVal : parents) {
+            QString pId = pVal.toString();
+            if (!pId.isEmpty() && !parentIds.contains(pId)) {
+                parentIds.append(pId);
+            }
         }
-    } else {
-        qDebug() << "BisyncManager: Remote changes detected, but automatic full sync is disabled (Sync times is empty).";
-        setStatusText(QStringLiteral("Idle. Watching for changes..."));
+    }
+
+    if (parentIds.isEmpty()) {
+        // Changes in root
+        if (!m_scheduleHours.isEmpty()) {
+            if (!isSyncQueuedOrRunning(remote)) {
+                qDebug() << "BisyncManager: Remote changes in root. Triggering full sync for" << remote << "at path:" << baseLocalPath;
+                startSync(remote, baseLocalPath);
+            }
+        } else {
+            qDebug() << "BisyncManager: Remote changes in root, but automatic full sync is disabled (Sync times is empty).";
+            setStatusText(QStringLiteral("Idle. Watching for changes..."));
+        }
+        return;
+    }
+
+    // Resolve each parent folder path
+    for (const QString &pId : parentIds) {
+        m_apiClient->resolveDirectoryPath(remote, accessToken, pId);
+    }
+}
+
+void BisyncManager::onDirectoryPathResolved(const QString &remote, const QString &folderId, const QString &path)
+{
+    Q_UNUSED(folderId);
+    if (!m_settings->syncEnabled())
+        return;
+
+    QString baseLocalPath = localPathForRemote(remote);
+    if (baseLocalPath.isEmpty())
+        return;
+
+    if (path.isEmpty() && m_scheduleHours.isEmpty()) {
+        qDebug() << "BisyncManager: Remote change resolved to root, but automatic full sync is disabled (Sync times is empty).";
+        return;
+    }
+
+    QString remoteFs = remote + (path.isEmpty() ? QString() : (QStringLiteral(":") + path));
+    QString localPath = baseLocalPath + (path.isEmpty() ? QString() : (QStringLiteral("/") + path));
+
+    if (!isSyncQueuedOrRunning(remoteFs)) {
+        qDebug() << "BisyncManager: Remote changes triggered subdirectory sync for:" << remoteFs << "local:" << localPath;
+        startSync(remoteFs, localPath);
     }
 }
 

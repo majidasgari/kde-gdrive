@@ -95,6 +95,7 @@ private Q_SLOTS:
     void onRemotePollTimeout();
     void onDriveChangesReceived(const QString &remote, const QJsonObject &response);
     void onConfigDumpReceived(const QJsonObject &config);
+    void onDirectoryPathResolved(const QString &remote, const QString &folderId, const QString &path);
 
 private:
     void updateLastSync(const QString &status);
@@ -137,5 +138,6 @@ private:
     QTimer *m_remotePollTimer = nullptr;
     QMap<QString, QStringList> m_pendingLocalChanges;
     QMap<QString, QStringList> m_pendingRemoteChanges;
+    QMap<QString, QString> m_lastAccessTokens;
     QString m_statusText;
 };

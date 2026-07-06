@@ -7,6 +7,7 @@
 #include <QUrl>
 #include <QTimer>
 #include <QNetworkAccessManager>
+#include <QHash>
 #include <functional>
 
 class RcloneApiClient : public QObject
@@ -30,6 +31,7 @@ public Q_SLOTS:
     void getCoreStats();
     void dumpConfig();
     void fetchDriveChangesDirect(const QString &remote, const QString &accessToken, const QString &pageToken);
+    void resolveDirectoryPath(const QString &remote, const QString &accessToken, const QString &folderId);
 
 Q_SIGNALS:
     void versionReceived(const QString &version);
@@ -42,6 +44,7 @@ Q_SIGNALS:
     void coreStatsReceived(const QJsonObject &stats);
     void configDumpReceived(const QJsonObject &config);
     void driveChangesReceived(const QString &remote, const QJsonObject &response);
+    void directoryPathResolved(const QString &remote, const QString &folderId, const QString &path);
     void requestError(const QString &endpoint, const QString &error);
 
 private:
@@ -51,6 +54,10 @@ private:
     void handleConnected();
     void handleReadyRead();
     void handleError(QAbstractSocket::SocketError error);
+
+    struct ResolverContext;
+    friend struct ResolverContext;
+    QHash<QString, QString> m_resolvedPaths;
 
     QTcpSocket *m_socket = nullptr;
     QByteArray m_requestBuffer;
