@@ -72,6 +72,7 @@ public Q_SLOTS:
     void clearAllLocks();
     void startScheduler();
     void stopScheduler();
+    void initializeState();
 
 Q_SIGNALS:
     void runningChanged();
@@ -116,6 +117,8 @@ private:
     QList<int> m_scheduleHours;
     bool m_forceFlag = true;
     bool m_running = false;
+    bool m_initializingState = false;
+    bool m_resyncNext = false;
     QString m_lockInfo;
 
     // Sync queue for sequential execution
@@ -139,5 +142,6 @@ private:
     QMap<QString, QStringList> m_pendingLocalChanges;
     QMap<QString, QStringList> m_pendingRemoteChanges;
     QMap<QString, QString> m_lastAccessTokens;
+    QStringList m_pendingRemoteResolutions;
     QString m_statusText;
 };

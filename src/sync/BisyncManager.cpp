@@ -303,6 +303,11 @@ void BisyncManager::startSync(const QString &remote, const QString &localPath)
             }
         }
 
+        if (m_resyncNext) {
+            args << QStringLiteral("--resync");
+            m_resyncNext = false;
+        }
+
         if (m_forceFlag)
             args << QStringLiteral("--force");
 
@@ -378,6 +383,11 @@ void BisyncManager::startSyncWithConfig(const QString &remote, const QString &lo
                     args << QStringLiteral("--exclude") << trimmed;
                 }
             }
+        }
+
+        if (m_resyncNext) {
+            args << QStringLiteral("--resync");
+            m_resyncNext = false;
         }
 
         if (m_forceFlag)
@@ -488,6 +498,27 @@ void BisyncManager::startScheduler()
 void BisyncManager::stopScheduler()
 {
     m_scheduleTimer->stop();
+}
+
+void BisyncManager::initializeState()
+{
+    if (m_running)
+        return;
+
+    if (m_configuredPairs.isEmpty()) {
+        setStatusText(QStringLiteral("No remotes configured."));
+        return;
+    }
+
+    SyncPair pair = m_configuredPairs.first();
+
+    setStatusText(QStringLiteral("Initializing baseline state..."));
+    m_initializingState = true;
+    m_resyncNext = true;
+
+    // Trigger config dump to fetch the latest startPageToken
+    m_apiClient->setBaseUrl(QStringLiteral("http://127.0.0.1:%1").arg(m_settings->rclonePort()));
+    m_apiClient->dumpConfig();
 }
 
 void BisyncManager::runNextQueued()
@@ -610,6 +641,11 @@ void BisyncManager::onProcessFinished(int exitCode, QProcess::ExitStatus status)
                     args << QStringLiteral("--exclude") << trimmed;
                 }
             }
+        }
+
+        if (m_resyncNext) {
+            args << QStringLiteral("--resync");
+            m_resyncNext = false;
         }
 
         if (m_forceFlag)
@@ -801,7 +837,7 @@ void BisyncManager::onConfigDumpReceived(const QJsonObject &config)
 
         m_lastAccessTokens[pair.remote] = accessToken;
 
-        QString pageToken = m_settings->pageTokenForRemote(pair.remote);
+        QString pageToken = m_initializingState ? QString() : m_settings->pageTokenForRemote(pair.remote);
         m_apiClient->fetchDriveChangesDirect(pair.remote, accessToken, pageToken);
     }
 }
@@ -823,7 +859,16 @@ void BisyncManager::onDriveChangesReceived(const QString &remote, const QJsonObj
             m_settings->setPageTokenForRemote(remote, newToken);
             qDebug() << "BisyncManager: Initialized pageToken for" << remote << "to" << newToken;
         }
-        setStatusText(QStringLiteral("Idle. Watching for changes..."));
+        
+        if (m_initializingState) {
+            m_initializingState = false;
+            QString baseLocalPath = localPathForRemote(remote);
+            if (!baseLocalPath.isEmpty()) {
+                startSync(remote, baseLocalPath);
+            }
+        } else {
+            setStatusText(QStringLiteral("Idle. Watching for changes..."));
+        }
         return;
     }
 
@@ -884,13 +929,18 @@ void BisyncManager::onDriveChangesReceived(const QString &remote, const QJsonObj
 
     // Resolve each parent folder path
     for (const QString &pId : parentIds) {
+        m_pendingRemoteResolutions.append(pId);
         m_apiClient->resolveDirectoryPath(remote, accessToken, pId);
     }
 }
 
 void BisyncManager::onDirectoryPathResolved(const QString &remote, const QString &folderId, const QString &path)
 {
-    Q_UNUSED(folderId);
+    if (!m_pendingRemoteResolutions.contains(folderId)) {
+        return;
+    }
+    m_pendingRemoteResolutions.removeAll(folderId);
+
     if (!m_settings->syncEnabled())
         return;
 

@@ -99,6 +99,7 @@ Kirigami.ApplicationWindow {
                 Item { Layout.fillWidth: true }
                 BusyIndicator { running: bisync.running; visible: bisync.running; implicitHeight: 14; implicitWidth: 14 }
                 Button { text: "Sync All"; enabled: !bisync.running; icon.name: "view-refresh"; onClicked: bisync.startAllSyncs(); flat: true; visible: !bisync.running }
+                Button { text: "Mark Synced"; enabled: !bisync.running; icon.name: "edit-paste"; onClicked: bisync.initializeState(); flat: true; visible: !bisync.running }
                 Button { text: "Stop"; icon.name: "process-stop"; visible: bisync.running; onClicked: bisync.cancel(); flat: true }
                 Button { text: "Clear"; icon.name: "edit-clear"; visible: !bisync.running; onClicked: bisync.clearAllLocks(); flat: true }
             }

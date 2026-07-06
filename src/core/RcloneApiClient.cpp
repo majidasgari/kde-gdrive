@@ -284,6 +284,7 @@ void RcloneApiClient::fetchDriveChangesDirect(const QString &remote, const QStri
         query.addQueryItem(QStringLiteral("pageToken"), pageToken);
         query.addQueryItem(QStringLiteral("includeItemsFromAllDrives"), QStringLiteral("true"));
         query.addQueryItem(QStringLiteral("supportsAllDrives"), QStringLiteral("true"));
+        query.addQueryItem(QStringLiteral("fields"), QStringLiteral("nextPageToken,newStartPageToken,changes(fileId,removed,file(name,parents,mimeType))"));
         url.setQuery(query);
     }
 
