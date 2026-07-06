@@ -15,6 +15,21 @@ HTTP JSON-RPC API. This gives you:
 - **Native KDE** — Qt6 + KDE Frameworks 6 + Kirigami, a Plasma system-tray icon
   (`KStatusNotifierItem`), single-instance via `KDBusService`.
 
+## Screenshots
+
+<div align="center">
+  <h3>Main Window & Active Sync</h3>
+  <img src=".github/screenshots/main_sync.png" width="650" alt="Main Window"/>
+
+  <h3>Advanced Settings</h3>
+  <img src=".github/screenshots/settings.png" width="650" alt="Settings Page"/>
+
+  <h3>Cloud Remote Details</h3>
+  <img src=".github/screenshots/details.png" width="650" alt="Details Page"/>
+</div>
+
+---
+
 ## How it Works
 
 Nimbus implements a highly robust and responsive synchronization and mounting architecture by combining `rclone`'s virtual filesystem with native Qt/C++ event-driven components:
@@ -107,21 +122,6 @@ Or system install:
 sudo cmake --install build
 nimbus-gdrive
 ```
-
----
-
-## Screenshots
-
-<div align="center">
-  <h3>Main Window & Active Sync</h3>
-  <img src=".github/screenshots/main_sync.png" width="650" alt="Main Window"/>
-
-  <h3>Advanced Settings</h3>
-  <img src=".github/screenshots/settings.png" width="650" alt="Settings Page"/>
-
-  <h3>Cloud Remote Details</h3>
-  <img src=".github/screenshots/details.png" width="650" alt="Details Page"/>
-</div>
 
 ---
 
