@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=KDE GDrive
+Comment=A stable, fast rclone-based Google Drive client for KDE
+Exec=kde-gdrive
+Icon=drive-harddisk
+Type=Application
+Categories=Network;FileTransfer;
+Terminal=false
+StartupNotify=true
+X-KDE-StartupNotify=true
