@@ -116,6 +116,7 @@ Kirigami.ApplicationWindow {
 
             // Terminal
             Rectangle {
+                id: terminalContainer
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 Layout.minimumHeight: 100
@@ -150,7 +151,7 @@ Kirigami.ApplicationWindow {
                         }
 
                         function scrollToBottom() {
-                            var f = syncOutputArea.flickable
+                            var f = syncScroll.contentItem
                             if (f && f.contentHeight > f.height)
                                 f.contentY = f.contentHeight - f.height
                         }
@@ -166,6 +167,12 @@ Kirigami.ApplicationWindow {
                         onStickToBottomChanged: stickTimer.running = bisync.running && syncOutputArea.stickToBottom
                     }
                 }
+            }
+
+            // Spacer to keep elements aligned to the top when terminal is hidden
+            Item {
+                Layout.fillHeight: true
+                visible: !terminalContainer.visible
             }
         }
     }
