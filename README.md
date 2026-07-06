@@ -15,9 +15,33 @@ HTTP JSON-RPC API. This gives you:
 - **Native KDE** — Qt6 + KDE Frameworks 6 + Kirigami, a Plasma system-tray icon
   (`KStatusNotifierItem`), single-instance via `KDBusService`.
 
-> Work in progress. The initial release is an **MVP**: a system-tray app that
-> FUSE-mounts/unmounts Google Drive and walks the user through OAuth setup.
-> Two-way sync and an in-app file browser are planned for later phases.
+## How it Works
+
+Nimbus implements a highly robust and responsive synchronization and mounting architecture by combining `rclone`'s virtual filesystem with native Qt/C++ event-driven components:
+
+### 1. Daemon Architecture
+- **Persistent HTTP JSON-RPC Client**: On launch, Nimbus automatically starts a background `rclone rcd` (Remote Control Daemon). Instead of repeatedly spawning heavy subprocesses, Nimbus controls all mounts, remotes, and configurations via high-speed HTTP JSON-RPC requests, maintaining open connections and an active VFS cache.
+
+### 2. Intelligent Bi-directional Synchronization (Two-way Sync)
+Nimbus monitors and propagates file modifications in real-time between your local filesystem and Google Drive:
+- **Remote to Local (Changes API Polling)**:
+  - Rather than executing slow full-remote scans, Nimbus directly queries the official **Google Drive Changes API** using Qt's native HTTP stack (`QNetworkAccessManager`).
+  - Active OAuth access tokens are securely read from rclone's decrypted configuration (`config/dump` RPC).
+  - The client persists page tokens locally and polls the Changes API at a configurable interval (default: 60s). If changes are detected on the remote, it immediately triggers a targeted `rclone bisync` command to synchronize.
+- **Local to Remote (Recursive Folder Watcher)**:
+  - A custom `QFileSystemWatcher` wrapper recursively watches local sync folders. It dynamically registers new subdirectories and unregisters deleted ones in real-time.
+  - A 3-second debounce timer prevents premature sync triggers while files are still being actively written or modified.
+
+### 3. Queue & Lock Control
+- **Sequence Queue**: To prevent concurrent file operations and conflicts, Nimbus queues incoming sync jobs and runs them sequentially.
+- **Lock Management**: The application automatically tracks bisync state, detects stale lock files, and allows users to clear locks with a single click.
+
+### 4. Virtual Filesystem (FUSE Mount)
+- Remotes are mounted onto the local filesystem using FUSE. This exposes your Google Drive files inside standard file managers (like Dolphin or Nautilus) as if they were a local storage device, without consuming local hard drive space.
+
+### 5. Interactive UI & Feedback
+- **Real-time Status Bar**: Displays current backend status (e.g. syncing, checking changes, idle) and shows a loading indicator for active tasks.
+- **Advanced Control**: Features a clean settings configuration page for sync times, ignore filters, custom rclone ports, and poll intervals.
 
 ---
 
