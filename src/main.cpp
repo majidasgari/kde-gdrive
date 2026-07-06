@@ -137,6 +137,38 @@ int main(int argc, char *argv[])
         mainWindowCtrl->openSettings();
     });
 
+    // Update tray tooltip with current sync status
+    trayIcon->notifierItem()->setToolTipSubTitle(bisync->statusText());
+    QObject::connect(bisync, &BisyncManager::statusTextChanged, trayIcon, [trayIcon, bisync]() {
+        trayIcon->notifierItem()->setToolTipSubTitle(bisync->statusText());
+    });
+
+    // Show tray messages when window is hidden
+    auto isWindowVisible = [&engine]() {
+        for (auto *obj : engine.rootObjects()) {
+            if (auto *window = qobject_cast<QWindow *>(obj)) {
+                if (window->isVisible())
+                    return true;
+            }
+        }
+        return false;
+    };
+
+    QObject::connect(bisync, &BisyncManager::syncStarted, trayIcon, [trayIcon, isWindowVisible](const QString &remote) {
+        if (!isWindowVisible()) {
+            trayIcon->showMessage(QStringLiteral("Sync Started"), QStringLiteral("Syncing %1...").arg(remote), 3000);
+        }
+    });
+
+    QObject::connect(bisync, &BisyncManager::syncCompleted, trayIcon, [trayIcon](bool success, const QString &summary) {
+        Q_UNUSED(success)
+        trayIcon->showMessage(QStringLiteral("Sync Completed"), summary.isEmpty() ? QStringLiteral("Finished successfully") : summary, 3000);
+    });
+
+    QObject::connect(bisync, &BisyncManager::syncFailed, trayIcon, [trayIcon](const QString &error) {
+        trayIcon->showMessage(QStringLiteral("Sync Failed"), error, 5000);
+    });
+
     // --- Start daemon ---
     if (!rclonePath.isEmpty() && settings->autoStartDaemon()) {
         daemon->start();

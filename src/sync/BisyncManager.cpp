@@ -106,6 +106,35 @@ static QString formatRemotePath(const QString &remote)
     return remote.contains(QLatin1Char(':')) ? remote : remote + QStringLiteral(":");
 }
 
+static QString bisyncCacheKey(const QString &remote, const QString &localPath)
+{
+    // rclone names listing files by replacing / and : with _ and .
+    // e.g. "gdrive:Documents/Companies" + "/data/Cloud/Documents/Companies"
+    //   -> "gdrive_Documents_Companies..data_Cloud_Documents_Companies"
+    QString remoteKey = formatRemotePath(remote);
+    remoteKey.replace(QLatin1Char(':'), QLatin1Char('_'));
+    remoteKey.replace(QLatin1Char('/'), QLatin1Char('_'));
+    remoteKey = remoteKey.trimmed();
+    if (remoteKey.endsWith(QLatin1Char('_')))
+        remoteKey.chop(1);
+
+    QString localKey = localPath;
+    localKey.replace(QLatin1Char('/'), QLatin1Char('_'));
+    if (localKey.startsWith(QLatin1Char('_')))
+        localKey.remove(0, 1);
+
+    return remoteKey + QStringLiteral("..") + localKey;
+}
+
+static bool bisyncListingFilesExist(const QString &remote, const QString &localPath)
+{
+    QString cacheDir = QDir::homePath() + QStringLiteral("/.cache/rclone/bisync");
+    QString key = bisyncCacheKey(remote, localPath);
+    // Check for either .lst-old (stable state) or .lst (rclone 1.65+ format)
+    return QFile::exists(cacheDir + QLatin1Char('/') + key + QStringLiteral(".path1.lst-old"))
+        || QFile::exists(cacheDir + QLatin1Char('/') + key + QStringLiteral(".path1.lst"));
+}
+
 BisyncManager::BisyncManager(Settings *settings, QObject *parent)
     : QObject(parent)
     , m_process(new QProcess(this))
@@ -153,6 +182,7 @@ BisyncManager::BisyncManager(Settings *settings, QObject *parent)
     connect(m_apiClient, &RcloneApiClient::directoryPathResolved, this, &BisyncManager::onDirectoryPathResolved);
 
     updatePollTimerState();
+    clearAllLocks();
     m_statusText = QStringLiteral("Idle. Watching for changes...");
 }
 
@@ -305,7 +335,14 @@ void BisyncManager::startSync(const QString &remote, const QString &localPath)
 
         if (m_resyncNext) {
             args << QStringLiteral("--resync");
+            args << QStringLiteral("--resync-mode") << QStringLiteral("path2");
             m_resyncNext = false;
+        } else if (!bisyncListingFilesExist(remote, localPath)) {
+            // No prior bisync state for this path pair — resync is required.
+            // Use path2 (local) as authoritative so local deletions are respected.
+            qDebug() << "BisyncManager: No listing files found for" << remote << "- forcing --resync with path2 priority";
+            args << QStringLiteral("--resync");
+            args << QStringLiteral("--resync-mode") << QStringLiteral("path2");
         }
 
         if (m_forceFlag)
@@ -387,7 +424,12 @@ void BisyncManager::startSyncWithConfig(const QString &remote, const QString &lo
 
         if (m_resyncNext) {
             args << QStringLiteral("--resync");
+            args << QStringLiteral("--resync-mode") << QStringLiteral("path2");
             m_resyncNext = false;
+        } else if (!bisyncListingFilesExist(remote, localPath)) {
+            qDebug() << "BisyncManager: No listing files found for" << remote << "- forcing --resync with path2 priority";
+            args << QStringLiteral("--resync");
+            args << QStringLiteral("--resync-mode") << QStringLiteral("path2");
         }
 
         if (m_forceFlag)
@@ -645,7 +687,12 @@ void BisyncManager::onProcessFinished(int exitCode, QProcess::ExitStatus status)
 
         if (m_resyncNext) {
             args << QStringLiteral("--resync");
+            args << QStringLiteral("--resync-mode") << QStringLiteral("path2");
             m_resyncNext = false;
+        } else if (!bisyncListingFilesExist(m_currentRemote, m_pendingLocalPath)) {
+            qDebug() << "BisyncManager: No listing files found for" << m_currentRemote << "- forcing --resync with path2 priority";
+            args << QStringLiteral("--resync");
+            args << QStringLiteral("--resync-mode") << QStringLiteral("path2");
         }
 
         if (m_forceFlag)
