@@ -21,21 +21,20 @@ HTTP JSON-RPC API. This gives you:
 
 ---
 
-## پیش‌نیازها (Requirements)
+## Requirements
 
 ### Runtime
-- `rclone` (باینری سیستمی؛ نصب از طریق پکیج‌منیجر توزیع)
-- پشتیبانی FUSE (`fuse3` و `/dev/fuse`)
-- یک حساب Google Drive
+- `rclone` (System binary; install via your distribution's package manager)
+- FUSE support (`fuse3` and `/dev/fuse`)
+- A Google Drive account
 
 ### Build
 - CMake ≥ 3.24
 - ECM (extra-cmake-modules) — KF6
 - Qt6: `Core`, `Gui`, `Network`, `Qml`, `Quick`, `QuickControls2`
-- KDE Frameworks 6: `kirigami`, `ki18n`, `kcoreaddons`, `kconfig`,
-  `kdbusaddons`, `kstatusnotifieritem`
+- KDE Frameworks 6: `kirigami`, `ki18n`, `kcoreaddons`, `kconfig`, `kdbusaddons`, `kstatusnotifieritem`
 
-نمونه نصب روی Arch:
+Example installation on Arch Linux:
 
 ```bash
 sudo pacman -S base-devel cmake extra-cmake-modules \
@@ -48,7 +47,7 @@ sudo pacman -S base-devel cmake extra-cmake-modules \
 
 ## Build & Run
 
-### ۱. نصب پیش‌نیازها
+### 1. Install Requirements
 
 **Ubuntu / Debian:**
 ```bash
@@ -65,21 +64,21 @@ sudo pacman -S base-devel cmake extra-cmake-modules \
   rclone fuse3
 ```
 
-### ۲. بیلد
+### 2. Build
 
 ```bash
-# از ریشه پروژه
+# From project root
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
-### ۳. اجرا
+### 3. Run
 
 ```bash
 ./build/src/nimbus-gdrive
 ```
 
-یا نصب سیستمی:
+Or system install:
 ```bash
 sudo cmake --install build
 nimbus-gdrive
@@ -87,16 +86,16 @@ nimbus-gdrive
 
 ---
 
-## تصاویر (Screenshots)
+## Screenshots
 
 <div align="center">
-  <h3>پنجره اصلی و همگام‌سازی فعال (Main Window & Active Sync)</h3>
+  <h3>Main Window & Active Sync</h3>
   <img src=".github/screenshots/main_sync.png" width="650" alt="Main Window"/>
 
-  <h3>تنظیمات پیشرفته (Advanced Settings)</h3>
+  <h3>Advanced Settings</h3>
   <img src=".github/screenshots/settings.png" width="650" alt="Settings Page"/>
 
-  <h3>جزئیات ابری (Cloud Remote Details)</h3>
+  <h3>Cloud Remote Details</h3>
   <img src=".github/screenshots/details.png" width="650" alt="Details Page"/>
 </div>
 
