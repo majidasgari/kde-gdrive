@@ -12,9 +12,16 @@ class Settings;
 class LocalWatcher;
 class RcloneApiClient;
 
+enum SyncTrigger {
+    TriggerManual,
+    TriggerLocalChange,
+    TriggerRemoteChange
+};
+
 struct SyncPair {
     QString remote;
     QString localPath;
+    SyncTrigger trigger = TriggerManual;
 };
 
 class BisyncManager : public QObject
@@ -63,8 +70,8 @@ public:
     Q_INVOKABLE void populatePairs(const QStringList &remoteNames);
 
 public Q_SLOTS:
-    void startSync(const QString &remote, const QString &localPath);
-    void startSyncWithConfig(const QString &remote, const QString &localPath, const QString &configPath);
+    void startSync(const QString &remote, const QString &localPath, SyncTrigger trigger = TriggerManual);
+    void startSyncWithConfig(const QString &remote, const QString &localPath, const QString &configPath, SyncTrigger trigger = TriggerManual);
     void runDedupe(const QString &remote);
     void startAllSyncs();
     void cancel();
@@ -127,10 +134,12 @@ private:
 
     enum SyncStep {
         StepNone,
+        StepInitialSync,
         StepDedupe,
         StepBisync
     };
     SyncStep m_currentStep = StepNone;
+    SyncTrigger m_currentTrigger = TriggerManual;
     QString m_pendingLocalPath;
     QString m_pendingConfigPath;
     QMap<QString, bool> m_duplicateDetected;

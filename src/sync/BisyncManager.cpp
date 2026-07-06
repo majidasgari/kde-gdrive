@@ -269,10 +269,10 @@ QString BisyncManager::lockInfo() const
     return m_lockInfo;
 }
 
-void BisyncManager::startSync(const QString &remote, const QString &localPath)
+void BisyncManager::startSync(const QString &remote, const QString &localPath, SyncTrigger trigger)
 {
     if (m_running) {
-        m_syncQueue.append({remote, localPath});
+        m_syncQueue.append({remote, localPath, trigger});
         setStatusText(QStringLiteral("Sync queued for %1...").arg(remote));
         return;
     }
@@ -289,9 +289,43 @@ void BisyncManager::startSync(const QString &remote, const QString &localPath)
     m_currentRemote = remote;
     m_currentOutput.clear();
     m_running = true;
+    m_currentTrigger = trigger;
     Q_EMIT runningChanged();
     Q_EMIT syncStarted(remote);
     setStatusText(QStringLiteral("Syncing %1...").arg(remote));
+
+    bool needResync = m_resyncNext || !bisyncListingFilesExist(remote, localPath);
+    if (needResync && (trigger == TriggerLocalChange || trigger == TriggerRemoteChange)) {
+        m_currentStep = StepInitialSync;
+        m_pendingLocalPath = localPath;
+        m_pendingConfigPath.clear();
+        m_resyncNext = true; // Ensure next step (bisync) runs with --resync
+
+        QStringList args;
+        args << QStringLiteral("sync");
+        if (trigger == TriggerLocalChange) {
+            args << localPath << formatRemotePath(remote);
+        } else {
+            args << formatRemotePath(remote) << localPath;
+        }
+        args << QStringLiteral("--fast-list") << QStringLiteral("--verbose");
+
+        // Add exclude patterns from settings
+        QString excludePatterns = m_settings->syncExcludePatterns();
+        if (!excludePatterns.isEmpty()) {
+            QStringList patterns = excludePatterns.split(QLatin1Char(','), Qt::SkipEmptyParts);
+            for (const QString &pattern : patterns) {
+                QString trimmed = pattern.trimmed();
+                if (!trimmed.isEmpty()) {
+                    args << QStringLiteral("--exclude") << trimmed;
+                }
+            }
+        }
+
+        setStatusText(QStringLiteral("Initializing baseline via sync for %1...").arg(remote));
+        m_process->start(QStringLiteral("rclone"), args);
+        return;
+    }
 
     bool needDedupe = m_duplicateDetected.value(remote, false);
     if (needDedupe) {
@@ -352,10 +386,10 @@ void BisyncManager::startSync(const QString &remote, const QString &localPath)
     }
 }
 
-void BisyncManager::startSyncWithConfig(const QString &remote, const QString &localPath, const QString &configPath)
+void BisyncManager::startSyncWithConfig(const QString &remote, const QString &localPath, const QString &configPath, SyncTrigger trigger)
 {
     if (m_running) {
-        m_syncQueue.append({remote, localPath});
+        m_syncQueue.append({remote, localPath, trigger});
         setStatusText(QStringLiteral("Sync queued for %1...").arg(remote));
         return;
     }
@@ -372,9 +406,46 @@ void BisyncManager::startSyncWithConfig(const QString &remote, const QString &lo
     m_currentRemote = remote;
     m_currentOutput.clear();
     m_running = true;
+    m_currentTrigger = trigger;
     Q_EMIT runningChanged();
     Q_EMIT syncStarted(remote);
     setStatusText(QStringLiteral("Syncing %1...").arg(remote));
+
+    bool needResync = m_resyncNext || !bisyncListingFilesExist(remote, localPath);
+    if (needResync && (trigger == TriggerLocalChange || trigger == TriggerRemoteChange)) {
+        m_currentStep = StepInitialSync;
+        m_pendingLocalPath = localPath;
+        m_pendingConfigPath = configPath;
+        m_resyncNext = true; // Ensure next step (bisync) runs with --resync
+
+        QStringList args;
+        args << QStringLiteral("sync");
+        if (trigger == TriggerLocalChange) {
+            args << localPath << formatRemotePath(remote);
+        } else {
+            args << formatRemotePath(remote) << localPath;
+        }
+        if (!configPath.isEmpty()) {
+            args << QStringLiteral("--config") << configPath;
+        }
+        args << QStringLiteral("--fast-list") << QStringLiteral("--verbose");
+
+        // Add exclude patterns from settings
+        QString excludePatterns = m_settings->syncExcludePatterns();
+        if (!excludePatterns.isEmpty()) {
+            QStringList patterns = excludePatterns.split(QLatin1Char(','), Qt::SkipEmptyParts);
+            for (const QString &pattern : patterns) {
+                QString trimmed = pattern.trimmed();
+                if (!trimmed.isEmpty()) {
+                    args << QStringLiteral("--exclude") << trimmed;
+                }
+            }
+        }
+
+        setStatusText(QStringLiteral("Initializing baseline via sync for %1...").arg(remote));
+        m_process->start(QStringLiteral("rclone"), args);
+        return;
+    }
 
     bool needDedupe = m_duplicateDetected.value(remote, false);
     if (needDedupe) {
@@ -503,7 +574,7 @@ void BisyncManager::clearLockAndRetry()
     // Retry current sync
     if (!m_currentRemote.isEmpty() && !m_syncQueue.isEmpty()) {
         SyncPair next = m_syncQueue.takeFirst();
-        startSync(next.remote, next.localPath);
+        startSync(next.remote, next.localPath, next.trigger);
     }
 }
 
@@ -569,7 +640,7 @@ void BisyncManager::runNextQueued()
         return;
 
     SyncPair next = m_syncQueue.takeFirst();
-    startSync(next.remote, next.localPath);
+    startSync(next.remote, next.localPath, next.trigger);
 }
 
 void BisyncManager::onReadyReadStdout()
@@ -650,6 +721,50 @@ void BisyncManager::onProcessFinished(int exitCode, QProcess::ExitStatus status)
         m_currentRemote.clear();
         if (!m_syncQueue.isEmpty())
             QTimer::singleShot(2000, this, &BisyncManager::runNextQueued);
+        return;
+    }
+
+    if (m_currentStep == StepInitialSync) {
+        // Initial sync completed, now run bisync step!
+        m_currentStep = StepBisync;
+
+        QStringList args;
+        args << QStringLiteral("bisync")
+             << formatRemotePath(m_currentRemote)
+             << m_pendingLocalPath
+             << QStringLiteral("--resync-mode") << m_resyncMode
+             << QStringLiteral("--create-empty-src-dirs")
+             << QStringLiteral("--compare") << QStringLiteral("size,modtime")
+             << QStringLiteral("--ignore-listing-checksum")
+             << QStringLiteral("--fast-list")
+             << QStringLiteral("--verbose");
+
+        if (!m_pendingConfigPath.isEmpty()) {
+            args << QStringLiteral("--config") << m_pendingConfigPath;
+        }
+
+        // Add exclude patterns from settings
+        QString excludePatterns = m_settings->syncExcludePatterns();
+        if (!excludePatterns.isEmpty()) {
+            QStringList patterns = excludePatterns.split(QLatin1Char(','), Qt::SkipEmptyParts);
+            for (const QString &pattern : patterns) {
+                QString trimmed = pattern.trimmed();
+                if (!trimmed.isEmpty()) {
+                    args << QStringLiteral("--exclude") << trimmed;
+                }
+            }
+        }
+
+        // We run with --resync to create the database listings
+        args << QStringLiteral("--resync");
+        args << QStringLiteral("--resync-mode") << QStringLiteral("path2");
+        m_resyncNext = false;
+
+        if (m_forceFlag)
+            args << QStringLiteral("--force");
+
+        setStatusText(QStringLiteral("Establishing baseline bisync for %1...").arg(m_currentRemote));
+        m_process->start(QStringLiteral("rclone"), args);
         return;
     }
 
@@ -844,7 +959,7 @@ void BisyncManager::onLocalDebounceTimeout()
 
                     if (!isSyncQueuedOrRunning(remoteFs)) {
                         qDebug() << "BisyncManager: Local watch triggered sync for remote:" << remoteFs << "local:" << localPath;
-                        startSync(remoteFs, localPath);
+                        startSync(remoteFs, localPath, TriggerLocalChange);
                     }
                 }
             }
@@ -911,7 +1026,7 @@ void BisyncManager::onDriveChangesReceived(const QString &remote, const QJsonObj
             m_initializingState = false;
             QString baseLocalPath = localPathForRemote(remote);
             if (!baseLocalPath.isEmpty()) {
-                startSync(remote, baseLocalPath);
+                startSync(remote, baseLocalPath, TriggerManual);
             }
         } else {
             setStatusText(QStringLiteral("Idle. Watching for changes..."));
@@ -965,7 +1080,7 @@ void BisyncManager::onDriveChangesReceived(const QString &remote, const QJsonObj
         if (!m_scheduleHours.isEmpty()) {
             if (!isSyncQueuedOrRunning(remote)) {
                 qDebug() << "BisyncManager: Remote changes in root. Triggering full sync for" << remote << "at path:" << baseLocalPath;
-                startSync(remote, baseLocalPath);
+                startSync(remote, baseLocalPath, TriggerRemoteChange);
             }
         } else {
             qDebug() << "BisyncManager: Remote changes in root, but automatic full sync is disabled (Sync times is empty).";
@@ -1005,7 +1120,7 @@ void BisyncManager::onDirectoryPathResolved(const QString &remote, const QString
 
     if (!isSyncQueuedOrRunning(remoteFs)) {
         qDebug() << "BisyncManager: Remote changes triggered subdirectory sync for:" << remoteFs << "local:" << localPath;
-        startSync(remoteFs, localPath);
+        startSync(remoteFs, localPath, TriggerRemoteChange);
     }
 }
 
