@@ -87,8 +87,7 @@ int main(int argc, char *argv[])
         if (ok && hour >= 0 && hour <= 23)
             scheduleHours.append(hour);
     }
-    if (!scheduleHours.isEmpty())
-        bisync->setScheduleTimes(scheduleHours);
+    bisync->setScheduleTimes(scheduleHours);
 
     // --- UI ---
     auto *mainWindowCtrl = new MainWindow(settings, daemon, apiClient, mountManager,

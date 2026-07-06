@@ -21,7 +21,7 @@ Kirigami.Page {
             onTriggered: {
                 settings.syncEnabled = syncEnabledCb.checked
                 settings.syncResyncMode = resyncModeCb.currentText
-                settings.syncTimes = syncTimesField.text
+                settings.syncTimes = ""
                 settings.syncExcludePatterns = excludePatternsField.text
                 settings.dedupeMode = dedupeModeCb.currentText
                 settings.syncPollInterval = pollIntervalSpin.value
@@ -74,16 +74,6 @@ Kirigami.Page {
                 }
             }
 
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Kirigami.Units.largeSpacing
-                Label { text: "Sync times:"; Layout.preferredWidth: 120 }
-                TextField {
-                    id: syncTimesField
-                    Layout.fillWidth: true
-                    placeholderText: "10,18,23"
-                }
-            }
 
             RowLayout {
                 Layout.fillWidth: true
@@ -168,7 +158,6 @@ Kirigami.Page {
         portSpin.value = settings.rclonePort
         autoStartCb.checked = settings.autoStartDaemon
         autoMountCb.checked = settings.autoMountOnStart
-        syncTimesField.text = settings.syncTimes
         excludePatternsField.text = settings.syncExcludePatterns || ".directory, .DS_Store, desktop.ini"
         pollIntervalSpin.value = settings.syncPollInterval
         if (settings.syncResyncMode === "older") resyncModeCb.currentIndex = 0
@@ -188,7 +177,6 @@ Kirigami.Page {
             portSpin.value = settings.rclonePort
             autoStartCb.checked = settings.autoStartDaemon
             autoMountCb.checked = settings.autoMountOnStart
-            syncTimesField.text = settings.syncTimes
             excludePatternsField.text = settings.syncExcludePatterns || ".directory, .DS_Store, desktop.ini"
             pollIntervalSpin.value = settings.syncPollInterval
             if (settings.dedupeMode === "rename") dedupeModeCb.currentIndex = 0

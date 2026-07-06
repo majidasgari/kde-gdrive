@@ -122,7 +122,7 @@ void Settings::setSyncResyncMode(const QString &mode)
 
 QString Settings::syncTimes() const
 {
-    return group().readEntry(KEY_SYNC_TIMES, QStringLiteral("10,18,23"));
+    return group().readEntry(KEY_SYNC_TIMES, QString());
 }
 
 void Settings::setSyncTimes(const QString &times)

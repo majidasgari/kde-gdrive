@@ -71,13 +71,48 @@ static QString ansiToHtml(const QString &input)
     return output;
 }
 
+static bool isParentOrEqual(const QString &parent, const QString &child)
+{
+    if (parent == child)
+        return true;
+
+    QString p = parent;
+    if (!p.contains(QLatin1Char(':'))) {
+        p += QLatin1Char(':');
+    }
+    QString c = child;
+    if (!c.contains(QLatin1Char(':'))) {
+        c += QLatin1Char(':');
+    }
+
+    if (p == c)
+        return true;
+
+    // If p is the root of the remote (e.g. "gdrive:")
+    if (p.endsWith(QLatin1Char(':'))) {
+        return c.startsWith(p);
+    }
+
+    // Otherwise, it's a subpath. We check if c starts with p + '/'
+    QString pWithSlash = p;
+    if (!pWithSlash.endsWith(QLatin1Char('/'))) {
+        pWithSlash += QLatin1Char('/');
+    }
+    return c.startsWith(pWithSlash);
+}
+
+static QString formatRemotePath(const QString &remote)
+{
+    return remote.contains(QLatin1Char(':')) ? remote : remote + QStringLiteral(":");
+}
+
 BisyncManager::BisyncManager(Settings *settings, QObject *parent)
     : QObject(parent)
     , m_process(new QProcess(this))
     , m_scheduleTimer(new QTimer(this))
     , m_settings(settings)
     , m_resyncMode(QStringLiteral("older"))
-    , m_scheduleHours({10, 18, 23})
+    , m_scheduleHours({})
 {
     connect(m_process, &QProcess::readyReadStandardOutput, this, &BisyncManager::onReadyReadStdout);
     connect(m_process, &QProcess::readyReadStandardError, this, &BisyncManager::onReadyReadStderr);
@@ -99,15 +134,24 @@ BisyncManager::BisyncManager(Settings *settings, QObject *parent)
     m_remotePollTimer->setInterval(m_settings->syncPollInterval() * 1000);
     connect(m_remotePollTimer, &QTimer::timeout, this, &BisyncManager::onRemotePollTimeout);
 
-    connect(m_settings, &Settings::settingsChanged, this, [this]() {
+    auto updatePollTimerState = [this]() {
         m_remotePollTimer->setInterval(m_settings->syncPollInterval() * 1000);
-    });
+        if (m_settings->syncEnabled()) {
+            if (!m_remotePollTimer->isActive()) {
+                m_remotePollTimer->start();
+            }
+        } else {
+            m_remotePollTimer->stop();
+        }
+    };
+
+    connect(m_settings, &Settings::settingsChanged, this, updatePollTimerState);
 
     m_apiClient = new RcloneApiClient(this);
     connect(m_apiClient, &RcloneApiClient::driveChangesReceived, this, &BisyncManager::onDriveChangesReceived);
     connect(m_apiClient, &RcloneApiClient::configDumpReceived, this, &BisyncManager::onConfigDumpReceived);
 
-    m_remotePollTimer->start();
+    updatePollTimerState();
     m_statusText = QStringLiteral("Idle. Watching for changes...");
 }
 
@@ -218,7 +262,7 @@ void BisyncManager::startSync(const QString &remote, const QString &localPath)
 
         QStringList args;
         args << QStringLiteral("dedupe")
-             << remote + QStringLiteral(":")
+             << formatRemotePath(remote)
              << QStringLiteral("--dedupe-mode") << m_settings->dedupeMode()
              << QStringLiteral("--verbose");
 
@@ -228,12 +272,13 @@ void BisyncManager::startSync(const QString &remote, const QString &localPath)
 
         QStringList args;
         args << QStringLiteral("bisync")
-             << remote + QStringLiteral(":")
+             << formatRemotePath(remote)
              << localPath
              << QStringLiteral("--resync-mode") << m_resyncMode
              << QStringLiteral("--create-empty-src-dirs")
              << QStringLiteral("--compare") << QStringLiteral("size,modtime")
              << QStringLiteral("--ignore-listing-checksum")
+             << QStringLiteral("--fast-list")
              << QStringLiteral("--verbose");
 
         // Add exclude patterns from settings
@@ -288,7 +333,7 @@ void BisyncManager::startSyncWithConfig(const QString &remote, const QString &lo
 
         QStringList args;
         args << QStringLiteral("dedupe")
-             << remote + QStringLiteral(":")
+             << formatRemotePath(remote)
              << QStringLiteral("--dedupe-mode") << m_settings->dedupeMode()
              << QStringLiteral("--verbose");
         if (!configPath.isEmpty()) {
@@ -301,7 +346,7 @@ void BisyncManager::startSyncWithConfig(const QString &remote, const QString &lo
 
         QStringList args;
         args << QStringLiteral("bisync")
-             << remote + QStringLiteral(":")
+             << formatRemotePath(remote)
              << localPath;
         if (!configPath.isEmpty()) {
             args << QStringLiteral("--config") << configPath;
@@ -310,6 +355,7 @@ void BisyncManager::startSyncWithConfig(const QString &remote, const QString &lo
              << QStringLiteral("--create-empty-src-dirs")
              << QStringLiteral("--compare") << QStringLiteral("size,modtime")
              << QStringLiteral("--ignore-listing-checksum")
+             << QStringLiteral("--fast-list")
              << QStringLiteral("--verbose");
 
         // Add exclude patterns from settings
@@ -343,7 +389,7 @@ void BisyncManager::runDedupe(const QString &remote)
 
     QStringList args;
     args << QStringLiteral("dedupe")
-         << remote + QStringLiteral(":")
+         << formatRemotePath(remote)
          << QStringLiteral("--dedupe-mode") << m_settings->dedupeMode()
          << QStringLiteral("--verbose");
 
@@ -530,7 +576,7 @@ void BisyncManager::onProcessFinished(int exitCode, QProcess::ExitStatus status)
 
         QStringList args;
         args << QStringLiteral("bisync")
-             << m_currentRemote + QStringLiteral(":")
+             << formatRemotePath(m_currentRemote)
              << m_pendingLocalPath;
 
         if (!m_pendingConfigPath.isEmpty()) {
@@ -541,6 +587,7 @@ void BisyncManager::onProcessFinished(int exitCode, QProcess::ExitStatus status)
              << QStringLiteral("--create-empty-src-dirs")
              << QStringLiteral("--compare") << QStringLiteral("size,modtime")
              << QStringLiteral("--ignore-listing-checksum")
+             << QStringLiteral("--fast-list")
              << QStringLiteral("--verbose");
 
         // Add exclude patterns from settings
@@ -639,21 +686,28 @@ QTime BisyncManager::nextScheduledTime() const
 
 bool BisyncManager::isSyncQueuedOrRunning(const QString &remoteFs) const
 {
-    if (m_currentRemote == remoteFs)
-        return true;
-
-    if (m_currentRemote == remoteFs + QStringLiteral(" (dedupe)"))
-        return true;
+    if (!m_currentRemote.isEmpty()) {
+        QString current = m_currentRemote;
+        if (current.endsWith(QStringLiteral(" (dedupe)"))) {
+            current.chop(9);
+        }
+        if (isParentOrEqual(current, remoteFs)) {
+            return true;
+        }
+    }
 
     for (const auto &pair : m_syncQueue) {
-        if (pair.remote == remoteFs)
+        if (isParentOrEqual(pair.remote, remoteFs)) {
             return true;
+        }
     }
     return false;
 }
 
 void BisyncManager::onLocalFolderChanged(const QString &rootPath, const QString &relativePath)
 {
+    if (!m_settings->syncEnabled())
+        return;
     QString remoteName;
     for (const auto &pair : m_configuredPairs) {
         if (QDir::cleanPath(pair.localPath) == QDir::cleanPath(rootPath)) {
@@ -679,6 +733,8 @@ void BisyncManager::onLocalFolderChanged(const QString &rootPath, const QString 
 
 void BisyncManager::onLocalDebounceTimeout()
 {
+    if (!m_settings->syncEnabled())
+        return;
     auto it = m_pendingLocalChanges.begin();
     while (it != m_pendingLocalChanges.end()) {
         QString remote = it.key();
@@ -707,6 +763,8 @@ void BisyncManager::onLocalDebounceTimeout()
 
 void BisyncManager::onRemotePollTimeout()
 {
+    if (!m_settings->syncEnabled())
+        return;
     if (m_running)
         return;
 
@@ -717,6 +775,8 @@ void BisyncManager::onRemotePollTimeout()
 
 void BisyncManager::onConfigDumpReceived(const QJsonObject &config)
 {
+    if (!m_settings->syncEnabled())
+        return;
     for (const auto &pair : m_configuredPairs) {
         QJsonObject remoteConfig = config.value(pair.remote).toObject();
         QString tokenStr = remoteConfig.value(QStringLiteral("token")).toString();
@@ -736,6 +796,9 @@ void BisyncManager::onConfigDumpReceived(const QJsonObject &config)
 
 void BisyncManager::onDriveChangesReceived(const QString &remote, const QJsonObject &response)
 {
+    if (!m_settings->syncEnabled())
+        return;
+
     if (response.contains(QStringLiteral("error"))) {
         qWarning() << "BisyncManager: Changes API returned error for" << remote << ":" << response[QStringLiteral("error")].toString();
         setStatusText(QStringLiteral("Idle. Watching for changes (last poll failed)."));
@@ -773,9 +836,14 @@ void BisyncManager::onDriveChangesReceived(const QString &remote, const QJsonObj
     if (baseLocalPath.isEmpty())
         return;
 
-    if (!isSyncQueuedOrRunning(remote)) {
-        qDebug() << "BisyncManager: Remote changes detected. Triggering sync for" << remote << "at path:" << baseLocalPath;
-        startSync(remote, baseLocalPath);
+    if (!m_scheduleHours.isEmpty()) {
+        if (!isSyncQueuedOrRunning(remote)) {
+            qDebug() << "BisyncManager: Remote changes detected. Triggering sync for" << remote << "at path:" << baseLocalPath;
+            startSync(remote, baseLocalPath);
+        }
+    } else {
+        qDebug() << "BisyncManager: Remote changes detected, but automatic full sync is disabled (Sync times is empty).";
+        setStatusText(QStringLiteral("Idle. Watching for changes..."));
     }
 }
 
