@@ -117,4 +117,5 @@ private:
     SyncStep m_currentStep = StepNone;
     QString m_pendingLocalPath;
     QString m_pendingConfigPath;
+    QMap<QString, bool> m_duplicateDetected;
 };

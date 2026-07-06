@@ -32,7 +32,19 @@ Kirigami.ApplicationWindow {
     }
 
     Component { id: detailPageComp; RemoteDetailPage {} }
-    Component { id: settingsPageComp; SettingsPage { onAddRemoteClicked: pageStack.push(oauthPageComp) } }
+    Component {
+        id: settingsPageComp
+        SettingsPage {
+            onAddRemoteClicked: {
+                for (var i = 0; i < pageStack.depth; i++) {
+                    var page = pageStack.get(i)
+                    if (page && page.title === "OAuth Setup")
+                        return;
+                }
+                pageStack.push(oauthPageComp)
+            }
+        }
+    }
     Component { id: oauthPageComp; OAuthWizard {} }
 
     pageStack.initialPage: Kirigami.Page {

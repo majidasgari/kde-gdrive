@@ -181,17 +181,49 @@ void BisyncManager::startSync(const QString &remote, const QString &localPath)
     Q_EMIT runningChanged();
     Q_EMIT syncStarted(remote);
 
-    m_currentStep = StepDedupe;
-    m_pendingLocalPath = localPath;
-    m_pendingConfigPath.clear();
+    bool needDedupe = m_duplicateDetected.value(remote, false);
+    if (needDedupe) {
+        m_currentStep = StepDedupe;
+        m_pendingLocalPath = localPath;
+        m_pendingConfigPath.clear();
 
-    QStringList args;
-    args << QStringLiteral("dedupe")
-         << remote + QStringLiteral(":")
-         << QStringLiteral("--dedupe-mode") << m_settings->dedupeMode()
-         << QStringLiteral("--verbose");
+        QStringList args;
+        args << QStringLiteral("dedupe")
+             << remote + QStringLiteral(":")
+             << QStringLiteral("--dedupe-mode") << m_settings->dedupeMode()
+             << QStringLiteral("--verbose");
 
-    m_process->start(QStringLiteral("rclone"), args);
+        m_process->start(QStringLiteral("rclone"), args);
+    } else {
+        m_currentStep = StepBisync;
+
+        QStringList args;
+        args << QStringLiteral("bisync")
+             << remote + QStringLiteral(":")
+             << localPath
+             << QStringLiteral("--resync-mode") << m_resyncMode
+             << QStringLiteral("--create-empty-src-dirs")
+             << QStringLiteral("--compare") << QStringLiteral("size,modtime")
+             << QStringLiteral("--ignore-listing-checksum")
+             << QStringLiteral("--verbose");
+
+        // Add exclude patterns from settings
+        QString excludePatterns = m_settings->syncExcludePatterns();
+        if (!excludePatterns.isEmpty()) {
+            QStringList patterns = excludePatterns.split(QLatin1Char(','), Qt::SkipEmptyParts);
+            for (const QString &pattern : patterns) {
+                QString trimmed = pattern.trimmed();
+                if (!trimmed.isEmpty()) {
+                    args << QStringLiteral("--exclude") << trimmed;
+                }
+            }
+        }
+
+        if (m_forceFlag)
+            args << QStringLiteral("--force");
+
+        m_process->start(QStringLiteral("rclone"), args);
+    }
 }
 
 void BisyncManager::startSyncWithConfig(const QString &remote, const QString &localPath, const QString &configPath)
@@ -216,20 +248,55 @@ void BisyncManager::startSyncWithConfig(const QString &remote, const QString &lo
     Q_EMIT runningChanged();
     Q_EMIT syncStarted(remote);
 
-    m_currentStep = StepDedupe;
-    m_pendingLocalPath = localPath;
-    m_pendingConfigPath = configPath;
+    bool needDedupe = m_duplicateDetected.value(remote, false);
+    if (needDedupe) {
+        m_currentStep = StepDedupe;
+        m_pendingLocalPath = localPath;
+        m_pendingConfigPath = configPath;
 
-    QStringList args;
-    args << QStringLiteral("dedupe")
-         << remote + QStringLiteral(":")
-         << QStringLiteral("--dedupe-mode") << m_settings->dedupeMode()
-         << QStringLiteral("--verbose");
-    if (!configPath.isEmpty()) {
-        args << QStringLiteral("--config") << configPath;
+        QStringList args;
+        args << QStringLiteral("dedupe")
+             << remote + QStringLiteral(":")
+             << QStringLiteral("--dedupe-mode") << m_settings->dedupeMode()
+             << QStringLiteral("--verbose");
+        if (!configPath.isEmpty()) {
+            args << QStringLiteral("--config") << configPath;
+        }
+
+        m_process->start(QStringLiteral("rclone"), args);
+    } else {
+        m_currentStep = StepBisync;
+
+        QStringList args;
+        args << QStringLiteral("bisync")
+             << remote + QStringLiteral(":")
+             << localPath;
+        if (!configPath.isEmpty()) {
+            args << QStringLiteral("--config") << configPath;
+        }
+        args << QStringLiteral("--resync-mode") << m_resyncMode
+             << QStringLiteral("--create-empty-src-dirs")
+             << QStringLiteral("--compare") << QStringLiteral("size,modtime")
+             << QStringLiteral("--ignore-listing-checksum")
+             << QStringLiteral("--verbose");
+
+        // Add exclude patterns from settings
+        QString excludePatterns = m_settings->syncExcludePatterns();
+        if (!excludePatterns.isEmpty()) {
+            QStringList patterns = excludePatterns.split(QLatin1Char(','), Qt::SkipEmptyParts);
+            for (const QString &pattern : patterns) {
+                QString trimmed = pattern.trimmed();
+                if (!trimmed.isEmpty()) {
+                    args << QStringLiteral("--exclude") << trimmed;
+                }
+            }
+        }
+
+        if (m_forceFlag)
+            args << QStringLiteral("--force");
+
+        m_process->start(QStringLiteral("rclone"), args);
     }
-
-    m_process->start(QStringLiteral("rclone"), args);
 }
 
 void BisyncManager::runDedupe(const QString &remote)
@@ -377,6 +444,26 @@ void BisyncManager::onProcessFinished(int exitCode, QProcess::ExitStatus status)
 {
     onReadyReadStdout();
     onReadyReadStderr();
+
+    QString remoteName = m_currentRemote;
+    if (remoteName.endsWith(QStringLiteral(" (dedupe)"))) {
+        remoteName.chop(9);
+        if (exitCode == 0) {
+            m_duplicateDetected[remoteName] = false;
+        }
+    }
+
+    if (!remoteName.isEmpty()) {
+        if (m_currentStep == StepDedupe && exitCode == 0) {
+            m_duplicateDetected[remoteName] = false;
+        }
+        else if (m_currentOutput.contains(QStringLiteral("Duplicate object found"))) {
+            m_duplicateDetected[remoteName] = true;
+        }
+        else if (m_currentStep == StepBisync && exitCode == 0) {
+            m_duplicateDetected[remoteName] = false;
+        }
+    }
 
     if (status == QProcess::CrashExit) {
         m_running = false;

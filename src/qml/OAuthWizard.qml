@@ -15,6 +15,9 @@ Kirigami.Page {
     signal done()
     signal cancelled()
 
+    onCancelled: pageStack.pop()
+    onDone: pageStack.pop()
+
     Kirigami.Action {
         id: cancelAction
         text: "Back"
