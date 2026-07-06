@@ -6,6 +6,7 @@
 #include <QJsonArray>
 #include <QUrl>
 #include <QTimer>
+#include <QNetworkAccessManager>
 #include <functional>
 
 class RcloneApiClient : public QObject
@@ -28,7 +29,7 @@ public Q_SLOTS:
     void listMounts();
     void getCoreStats();
     void dumpConfig();
-    void getDriveChanges(const QString &remote, const QString &pageToken);
+    void fetchDriveChangesDirect(const QString &remote, const QString &accessToken, const QString &pageToken);
 
 Q_SIGNALS:
     void versionReceived(const QString &version);
@@ -58,4 +59,5 @@ private:
     QString m_pendingEndpoint;
     ResponseCallback m_pendingCallback;
     QTimer *m_timeout;
+    QNetworkAccessManager *m_networkManager = nullptr;
 };

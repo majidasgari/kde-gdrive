@@ -30,6 +30,7 @@ class BisyncManager : public QObject
     Q_PROPERTY(QString currentRemote READ currentRemote NOTIFY syncStarted)
     Q_PROPERTY(bool lockDetected READ isLockDetected NOTIFY lockDetected)
     Q_PROPERTY(QString lockInfo READ lockInfo NOTIFY lockDetected)
+    Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
 
 public:
     explicit BisyncManager(Settings *settings, QObject *parent = nullptr);
@@ -43,6 +44,7 @@ public:
     QString currentRemote() const;
     bool isLockDetected() const;
     QString lockInfo() const;
+    QString statusText() const;
 
     void setResyncMode(const QString &mode);
     QString resyncMode() const;
@@ -80,6 +82,7 @@ Q_SIGNALS:
     void syncFailed(const QString &error);
     void outputReceived(const QString &line);
     void lockDetected();
+    void statusTextChanged();
 
 private Q_SLOTS:
     void onReadyReadStdout();
@@ -91,12 +94,14 @@ private Q_SLOTS:
     void onLocalDebounceTimeout();
     void onRemotePollTimeout();
     void onDriveChangesReceived(const QString &remote, const QJsonObject &response);
+    void onConfigDumpReceived(const QJsonObject &config);
 
 private:
     void updateLastSync(const QString &status);
     QTime nextScheduledTime() const;
     void runNextQueued();
     bool isSyncQueuedOrRunning(const QString &remoteFs) const;
+    void setStatusText(const QString &text);
 
     QProcess *m_process;
     QTimer *m_scheduleTimer;
@@ -132,4 +137,5 @@ private:
     QTimer *m_remotePollTimer = nullptr;
     QMap<QString, QStringList> m_pendingLocalChanges;
     QMap<QString, QStringList> m_pendingRemoteChanges;
+    QString m_statusText;
 };

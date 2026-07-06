@@ -207,4 +207,37 @@ Kirigami.ApplicationWindow {
             }
         }
     }
+
+    footer: ToolBar {
+        implicitHeight: statusLabel.implicitHeight + 12
+        background: Rectangle {
+            color: Kirigami.Theme.backgroundColor
+            Rectangle {
+                anchors.top: parent.top
+                width: parent.width
+                height: 1
+                color: Kirigami.Theme.alternateBackgroundColor
+            }
+        }
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 12
+            anchors.rightMargin: 12
+            spacing: 8
+            Label {
+                id: statusLabel
+                text: bisync.statusText || "Idle"
+                font.pointSize: 9
+                color: Kirigami.Theme.disabledTextColor
+                Layout.fillWidth: true
+                elide: Text.ElideRight
+            }
+            BusyIndicator {
+                running: bisync.running
+                visible: bisync.running
+                implicitHeight: 14
+                implicitWidth: 14
+            }
+        }
+    }
 }

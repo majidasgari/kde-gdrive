@@ -76,14 +76,29 @@ cmake --build build
 ### ۳. اجرا
 
 ```bash
-./build/src/kde-gdrive
+./build/src/nimbus-gdrive
 ```
 
 یا نصب سیستمی:
 ```bash
 sudo cmake --install build
-kde-gdrive
+nimbus-gdrive
 ```
+
+---
+
+## تصاویر (Screenshots)
+
+<div align="center">
+  <h3>پنجره اصلی و همگام‌سازی فعال (Main Window & Active Sync)</h3>
+  <img src=".github/screenshots/main_sync.png" width="650" alt="Main Window"/>
+
+  <h3>تنظیمات پیشرفته (Advanced Settings)</h3>
+  <img src=".github/screenshots/settings.png" width="650" alt="Settings Page"/>
+
+  <h3>جزئیات ابری (Cloud Remote Details)</h3>
+  <img src=".github/screenshots/details.png" width="650" alt="Details Page"/>
+</div>
 
 ---
 

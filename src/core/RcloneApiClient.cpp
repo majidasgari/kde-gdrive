@@ -2,6 +2,9 @@
 
 #include <QJsonDocument>
 #include <QHostAddress>
+#include <QNetworkRequest>
+#include <QNetworkReply>
+#include <QUrlQuery>
 #include <QDebug>
 
 RcloneApiClient::RcloneApiClient(QObject *parent)
@@ -25,6 +28,8 @@ RcloneApiClient::RcloneApiClient(QObject *parent)
         Q_EMIT requestError(m_pendingEndpoint, QStringLiteral("Request timed out"));
         m_pendingEndpoint.clear();
     });
+
+    m_networkManager = new QNetworkAccessManager(this);
 }
 
 void RcloneApiClient::setBaseUrl(const QString &url)
@@ -268,22 +273,38 @@ void RcloneApiClient::dumpConfig()
     });
 }
 
-void RcloneApiClient::getDriveChanges(const QString &remote, const QString &pageToken)
+void RcloneApiClient::fetchDriveChangesDirect(const QString &remote, const QString &accessToken, const QString &pageToken)
 {
-    QJsonObject params;
-    params[QStringLiteral("command")] = QStringLiteral("changes");
-    params[QStringLiteral("fs")] = QString(remote + QStringLiteral(":"));
-
-    QJsonArray argsArray;
-    params[QStringLiteral("arg")] = argsArray;
-
-    QJsonObject opts;
-    if (!pageToken.isEmpty()) {
-        opts[QStringLiteral("pageToken")] = pageToken;
+    QUrl url;
+    if (pageToken.isEmpty()) {
+        url = QUrl(QStringLiteral("https://www.googleapis.com/drive/v3/changes/startPageToken"));
+    } else {
+        url = QUrl(QStringLiteral("https://www.googleapis.com/drive/v3/changes"));
+        QUrlQuery query;
+        query.addQueryItem(QStringLiteral("pageToken"), pageToken);
+        query.addQueryItem(QStringLiteral("includeItemsFromAllDrives"), QStringLiteral("true"));
+        query.addQueryItem(QStringLiteral("supportsAllDrives"), QStringLiteral("true"));
+        url.setQuery(query);
     }
-    params[QStringLiteral("opt")] = opts;
 
-    sendRequest(QStringLiteral("backend/command"), params, [this, remote](int, const QJsonObject &obj) {
-        Q_EMIT driveChangesReceived(remote, obj);
+    QNetworkRequest request(url);
+    request.setRawHeader("Authorization", QString(QStringLiteral("Bearer ") + accessToken).toUtf8());
+
+    QNetworkReply *reply = m_networkManager->get(request);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, remote]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError) {
+            qWarning() << "RcloneApiClient: Direct Drive API error:" << reply->errorString();
+            QJsonObject errObj;
+            errObj[QStringLiteral("error")] = reply->errorString();
+            Q_EMIT driveChangesReceived(remote, errObj);
+            return;
+        }
+
+        QByteArray data = reply->readAll();
+        QJsonDocument doc = QJsonDocument::fromJson(data);
+        if (doc.isObject()) {
+            Q_EMIT driveChangesReceived(remote, doc.object());
+        }
     });
 }

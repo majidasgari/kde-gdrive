@@ -105,8 +105,10 @@ BisyncManager::BisyncManager(Settings *settings, QObject *parent)
 
     m_apiClient = new RcloneApiClient(this);
     connect(m_apiClient, &RcloneApiClient::driveChangesReceived, this, &BisyncManager::onDriveChangesReceived);
+    connect(m_apiClient, &RcloneApiClient::configDumpReceived, this, &BisyncManager::onConfigDumpReceived);
 
     m_remotePollTimer->start();
+    m_statusText = QStringLiteral("Idle. Watching for changes...");
 }
 
 bool BisyncManager::isRunning() const { return m_running; }
@@ -116,6 +118,7 @@ QString BisyncManager::nextSyncTime() const { return m_nextSyncTimeStr; }
 QString BisyncManager::currentOutput() const { return m_currentOutput; }
 QString BisyncManager::currentOutputRich() const { return ansiToHtml(m_currentOutput); }
 QString BisyncManager::currentRemote() const { return m_currentRemote; }
+QString BisyncManager::statusText() const { return m_statusText; }
 
 void BisyncManager::setResyncMode(const QString &mode) { m_resyncMode = mode; }
 QString BisyncManager::resyncMode() const { return m_resyncMode; }
@@ -186,6 +189,7 @@ void BisyncManager::startSync(const QString &remote, const QString &localPath)
 {
     if (m_running) {
         m_syncQueue.append({remote, localPath});
+        setStatusText(QStringLiteral("Sync queued for %1...").arg(remote));
         return;
     }
 
@@ -203,12 +207,14 @@ void BisyncManager::startSync(const QString &remote, const QString &localPath)
     m_running = true;
     Q_EMIT runningChanged();
     Q_EMIT syncStarted(remote);
+    setStatusText(QStringLiteral("Syncing %1...").arg(remote));
 
     bool needDedupe = m_duplicateDetected.value(remote, false);
     if (needDedupe) {
         m_currentStep = StepDedupe;
         m_pendingLocalPath = localPath;
         m_pendingConfigPath.clear();
+        setStatusText(QStringLiteral("Deduplicating %1...").arg(remote));
 
         QStringList args;
         args << QStringLiteral("dedupe")
@@ -253,6 +259,7 @@ void BisyncManager::startSyncWithConfig(const QString &remote, const QString &lo
 {
     if (m_running) {
         m_syncQueue.append({remote, localPath});
+        setStatusText(QStringLiteral("Sync queued for %1...").arg(remote));
         return;
     }
 
@@ -270,12 +277,14 @@ void BisyncManager::startSyncWithConfig(const QString &remote, const QString &lo
     m_running = true;
     Q_EMIT runningChanged();
     Q_EMIT syncStarted(remote);
+    setStatusText(QStringLiteral("Syncing %1...").arg(remote));
 
     bool needDedupe = m_duplicateDetected.value(remote, false);
     if (needDedupe) {
         m_currentStep = StepDedupe;
         m_pendingLocalPath = localPath;
         m_pendingConfigPath = configPath;
+        setStatusText(QStringLiteral("Deduplicating %1...").arg(remote));
 
         QStringList args;
         args << QStringLiteral("dedupe")
@@ -494,6 +503,7 @@ void BisyncManager::onProcessFinished(int exitCode, QProcess::ExitStatus status)
         Q_EMIT runningChanged();
         updateLastSync(QStringLiteral("Crashed"));
         Q_EMIT syncFailed(QStringLiteral("Rclone process crashed"));
+        setStatusText(QStringLiteral("Idle. Watching for changes (last sync crashed)."));
         return;
     }
 
@@ -506,6 +516,7 @@ void BisyncManager::onProcessFinished(int exitCode, QProcess::ExitStatus status)
         Q_EMIT syncFailed(error.isEmpty()
             ? QStringLiteral("Operation on %1 failed (code %2)").arg(m_currentRemote).arg(exitCode)
             : error);
+        setStatusText(QStringLiteral("Idle. Watching for changes (last sync failed)."));
 
         m_currentRemote.clear();
         if (!m_syncQueue.isEmpty())
@@ -557,6 +568,7 @@ void BisyncManager::onProcessFinished(int exitCode, QProcess::ExitStatus status)
 
     updateLastSync(QStringLiteral("Success: %1").arg(m_currentRemote));
     Q_EMIT syncCompleted(true, QStringLiteral("Sync of %1 completed successfully").arg(m_currentRemote));
+    setStatusText(QStringLiteral("Idle. Watching for changes (last sync succeeded)."));
 
     m_currentRemote.clear();
 
@@ -573,6 +585,7 @@ void BisyncManager::onProcessError(QProcess::ProcessError error)
     Q_EMIT runningChanged();
     updateLastSync(QStringLiteral("Error: %1").arg(m_currentRemote));
     Q_EMIT syncFailed(QStringLiteral("Failed to start rclone: %1").arg(m_process->errorString()));
+    setStatusText(QStringLiteral("Idle. Watching for changes (last sync failed)."));
     m_currentRemote.clear();
 }
 
@@ -660,6 +673,7 @@ void BisyncManager::onLocalFolderChanged(const QString &rootPath, const QString 
         m_pendingLocalChanges[remoteName].append(dirToSync);
     }
 
+    setStatusText(QStringLiteral("Local changes detected in %1. Syncing soon...").arg(dirToSync.isEmpty() ? QStringLiteral("/") : dirToSync));
     m_localDebounceTimer->start();
 }
 
@@ -693,11 +707,30 @@ void BisyncManager::onLocalDebounceTimeout()
 
 void BisyncManager::onRemotePollTimeout()
 {
-    m_apiClient->setBaseUrl(QStringLiteral("http://127.0.0.1:%1").arg(m_settings->rclonePort()));
+    if (m_running)
+        return;
 
+    m_apiClient->setBaseUrl(QStringLiteral("http://127.0.0.1:%1").arg(m_settings->rclonePort()));
+    setStatusText(QStringLiteral("Checking for remote changes..."));
+    m_apiClient->dumpConfig();
+}
+
+void BisyncManager::onConfigDumpReceived(const QJsonObject &config)
+{
     for (const auto &pair : m_configuredPairs) {
-        QString token = m_settings->pageTokenForRemote(pair.remote);
-        m_apiClient->getDriveChanges(pair.remote, token);
+        QJsonObject remoteConfig = config.value(pair.remote).toObject();
+        QString tokenStr = remoteConfig.value(QStringLiteral("token")).toString();
+        if (tokenStr.isEmpty())
+            continue;
+
+        QJsonDocument tokenDoc = QJsonDocument::fromJson(tokenStr.toUtf8());
+        QJsonObject tokenObj = tokenDoc.object();
+        QString accessToken = tokenObj.value(QStringLiteral("access_token")).toString();
+        if (accessToken.isEmpty())
+            continue;
+
+        QString pageToken = m_settings->pageTokenForRemote(pair.remote);
+        m_apiClient->fetchDriveChangesDirect(pair.remote, accessToken, pageToken);
     }
 }
 
@@ -705,25 +738,34 @@ void BisyncManager::onDriveChangesReceived(const QString &remote, const QJsonObj
 {
     if (response.contains(QStringLiteral("error"))) {
         qWarning() << "BisyncManager: Changes API returned error for" << remote << ":" << response[QStringLiteral("error")].toString();
+        setStatusText(QStringLiteral("Idle. Watching for changes (last poll failed)."));
         return;
     }
 
-    QJsonObject result = response.value(QStringLiteral("result")).toObject();
-    QString newToken = result.value(QStringLiteral("pageToken")).toString();
-    if (newToken.isEmpty())
-        return;
-
-    QString oldToken = m_settings->pageTokenForRemote(remote);
-    m_settings->setPageTokenForRemote(remote, newToken);
-
-    if (oldToken.isEmpty()) {
-        qDebug() << "BisyncManager: Initialized pageToken for" << remote << "to" << newToken;
+    if (response.contains(QStringLiteral("startPageToken"))) {
+        QString newToken = response.value(QStringLiteral("startPageToken")).toString();
+        if (!newToken.isEmpty()) {
+            m_settings->setPageTokenForRemote(remote, newToken);
+            qDebug() << "BisyncManager: Initialized pageToken for" << remote << "to" << newToken;
+        }
+        setStatusText(QStringLiteral("Idle. Watching for changes..."));
         return;
     }
 
-    QJsonArray changes = result.value(QStringLiteral("changes")).toArray();
-    if (changes.isEmpty())
+    QString newToken = response.value(QStringLiteral("newStartPageToken")).toString();
+    if (newToken.isEmpty()) {
+        newToken = response.value(QStringLiteral("nextPageToken")).toString();
+    }
+
+    if (!newToken.isEmpty()) {
+        m_settings->setPageTokenForRemote(remote, newToken);
+    }
+
+    QJsonArray changes = response.value(QStringLiteral("changes")).toArray();
+    if (changes.isEmpty()) {
+        setStatusText(QStringLiteral("Idle. Watching for changes..."));
         return;
+    }
 
     qDebug() << "BisyncManager: Received" << changes.size() << "remote changes for" << remote;
 
@@ -731,34 +773,16 @@ void BisyncManager::onDriveChangesReceived(const QString &remote, const QJsonObj
     if (baseLocalPath.isEmpty())
         return;
 
-    QStringList subdirsToSync;
-
-    for (int i = 0; i < changes.size(); ++i) {
-        QJsonObject change = changes.at(i).toObject();
-        QString name = change.value(QStringLiteral("name")).toString();
-        if (name.isEmpty())
-            continue;
-
-        name = QDir::cleanPath(name);
-
-        QFileInfo fi(name);
-        QString relativeDir = fi.path();
-        if (relativeDir == QStringLiteral(".") || relativeDir.isEmpty()) {
-            relativeDir = QString();
-        }
-
-        if (!subdirsToSync.contains(relativeDir)) {
-            subdirsToSync.append(relativeDir);
-        }
+    if (!isSyncQueuedOrRunning(remote)) {
+        qDebug() << "BisyncManager: Remote changes detected. Triggering sync for" << remote << "at path:" << baseLocalPath;
+        startSync(remote, baseLocalPath);
     }
+}
 
-    for (const QString &sub : subdirsToSync) {
-        QString remoteFs = remote + QStringLiteral(":") + sub;
-        QString localPath = baseLocalPath + (sub.isEmpty() ? QString() : (QStringLiteral("/") + sub));
-
-        if (!isSyncQueuedOrRunning(remoteFs)) {
-            qDebug() << "BisyncManager: Remote watch triggered sync for remote:" << remoteFs << "local:" << localPath;
-            startSync(remoteFs, localPath);
-        }
+void BisyncManager::setStatusText(const QString &text)
+{
+    if (m_statusText != text) {
+        m_statusText = text;
+        Q_EMIT statusTextChanged();
     }
 }
