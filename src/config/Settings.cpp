@@ -213,7 +213,7 @@ void Settings::setPageTokenForRemote(const QString &remoteName, const QString &t
 
 int Settings::syncPollInterval() const
 {
-    return group().readEntry(KEY_SYNC_POLL_INTERVAL, 60);
+    return group().readEntry(KEY_SYNC_POLL_INTERVAL, 300);
 }
 
 void Settings::setSyncPollInterval(int seconds)
